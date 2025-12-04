@@ -1,6 +1,6 @@
 # 🦬 Appa: Bending Weather Dynamics with Latent Diffusion Models for Global Data Assimilation
 
-[[paper](https://montefiore-sail.github.io/appa/paper.pdf)] [[website](https://montefiore-sail.github.io/appa)] [[data & models](https://huggingface.co/datasets/montefiore-sail/appa)] [[live forecasts](https://montefiore-sail.github.io/appa-live)]
+[[paper](https://arxiv.org/abs/2504.18720)] [[website](https://montefiore-sail.github.io/appa)] [[data & models](https://huggingface.co/datasets/montefiore-sail/appa)] [[live forecasts](https://appa.montefiore.uliege.be/)]
 
 <p align="center">
         <img src="./.github/banner.webp" alt="Three forecasts sampled from Appa against ground truth. Visualization of specific humidity at 850hPa."/>
