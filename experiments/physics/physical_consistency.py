@@ -169,6 +169,7 @@ def compute_histograms(
             else:
                 fields[var] = x[idx : idx + num_levels]
 
+        # arXiv:2504.18720v3 Sec. 4.3 (Eq. 10): pressure/temperature altitude estimate.
         # 1. Computing PTA
         PTA = pressure_to_altitude(
             pressures=torch.as_tensor(pressure_levels),
@@ -177,6 +178,7 @@ def compute_histograms(
             lin=False,
         )
 
+        # arXiv:2504.18720v3 Sec. 4.3 (Eq. 9): geopotential-based altitude estimate.
         # 2. Computing GTA
         GTA = geopotential_to_altitude(geop=fields["geopotential"])
 

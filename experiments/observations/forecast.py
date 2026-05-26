@@ -195,6 +195,10 @@ def forecast(
 ):
     r"""Performs autoregressive forecasting.
 
+    Paper mapping (`arXiv:2504.18720v3`):
+        - observational forecasting: Sec. 4.4, Eq. (13)
+        - full-state forecasting: Sec. 4.4, Eq. (14)
+
     Args:
         model_path: Path to the model directory.
         model_target: Target model to load (best or last).
@@ -487,6 +491,8 @@ def forecast(
         denoise = MMPSDenoiser(
             denoise, A, z_obs.cuda(), z_obs_cov.cuda(), iterations=diffusion.mmps_iters
         )
+        # arXiv:2306.10574 (SDA): zero-shot conditioning is done at inference by
+        # adding likelihood guidance; Appa Sec. 3.3 uses latent operators + MMPS.
         denoise = partial(denoise, date=timestamps.cuda())
 
         with torch.no_grad():

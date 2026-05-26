@@ -31,6 +31,8 @@ def compute_latent_statistics(
 
     assert latent_path.exists(), f"Latent data not found at {latent_path}."
 
+    # arXiv:2504.18720v3 Sec. 3.1-3.2: latent mean/std are used to standardize
+    # encoded blankets before denoiser training and downstream sampling.
     dataset = LatentBlanketDataset(
         latent_path,
         start_date,

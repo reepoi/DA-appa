@@ -52,6 +52,8 @@ METRICS = {
         "root": False,
     },
 }
+# arXiv:2504.18720v3 Sec. 4.4 (Fig. 8): this script reports CRPS, skill (RMSE of
+# ensemble mean), and spread statistics for reanalysis/filtering/forecast runs.
 
 
 def tensor_to_datetime(tensor):

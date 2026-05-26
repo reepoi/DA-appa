@@ -127,6 +127,8 @@ class MMPSDenoiser(nn.Module):
         def At(v):
             return torch.autograd.grad(y_hat, x_hat, v, retain_graph=True)[0]
 
+        # arXiv:2405.13712 (MMPS), used by Appa Sec. 3.3 Eq. (8): covariance uses
+        # either Tweedie sigma_t^2 * d x_hat / d x_t or the VE proxy var_t * I.
         # fmt: off
         if self.tweedie_covariance:
             def cov_x(v):
@@ -139,6 +141,8 @@ class MMPSDenoiser(nn.Module):
         def cov_y(v):
             return selfvar_y * v + A(cov_x(At(v)))
 
+        # arXiv:2306.10574 (SDA): posterior score = prior score + likelihood score;
+        # Appa Sec. 3.3 Eq. (6-8) applies this in latent space with MMPS guidance.
         grad = selfy - y_hat
         grad = self.solve(A=cov_y, b=grad)
         score = torch.autograd.grad(y_hat, x_t, grad)[0]
@@ -354,6 +358,8 @@ class TrajectoryDenoiser(nn.Module):
         segments = []
         if x.shape[1] > 1:
             if self.mode == "symmetrical":
+                # arXiv:2306.10574 (SDA): compose a global trajectory score from local
+                # overlapping blanket predictions; Appa Sec. 3.2 adapts this to latents.
                 i = (self.blanket_size - self.blanket_stride) // 2
                 j = i + self.blanket_stride
                 segments.append(x[:, 0, :j])

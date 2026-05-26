@@ -43,6 +43,8 @@ def dump_to_latent(config):
     output_path = model_path / "latents" / config.id
     (output_path / "tmp").mkdir(parents=True, exist_ok=True)
 
+    # arXiv:2504.18720v3 Sec. 3.1: latent-diffusion training and inference run on
+    # encoded ERA5 states, so this script materializes the latent dataset.
     # Copy AE
     (output_path / "ae").mkdir(parents=True, exist_ok=True)
     shutil.copy2(model_path / "config.yaml", output_path / "ae" / "config.yaml")

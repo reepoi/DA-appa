@@ -226,6 +226,10 @@ def reanalysis(
 ):
     r"""Performs reanalysis over some assimilation window.
 
+    Paper mapping (`arXiv:2504.18720v3`):
+        - reanalysis objective: Sec. 4.4, Eq. (11)
+        - filtering as marginal of reanalysis: Sec. 4.4, Eq. (12)
+
     Args:
         model_path: Path to the model directory.
         model_target: Target model to load (best or last).
@@ -337,6 +341,8 @@ def reanalysis(
         start_date, start_hour, padded_trajectory_size, trajectory_dt
     )[None]
 
+    # arXiv:2306.10574 (SDA): trajectories are handled as overlapping blankets and
+    # sampled jointly (non-autoregressive); this code parallelizes blankets by rank.
     # Distribute blankets across GPUs.
     num_blankets = (padded_trajectory_size - blanket_size) // blanket_stride + 1
     num_gpus = dist.get_world_size()

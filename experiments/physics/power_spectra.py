@@ -144,6 +144,8 @@ def compute_power_spectra(
         time = np.datetime64(f"{t_gt[0]:04d}-{t_gt[1]:02d}-{t_gt[2]:02d}T{t_gt[3]:02d}:00").astype(
             "datetime64[ns]"
         )
+        # arXiv:2504.18720v3 Sec. 4.2-4.3 (Fig. 4): compare energy distribution
+        # across spherical harmonic degrees for ERA5, AE reconstructions, and samples.
         tool_spherical_harmonics = RealSHT(nlat=Lat, nlon=Lon, grid="equiangular").to(device)
         coeffecients = tool_spherical_harmonics(x[:, 0])
         coeffecients = coeffecients.abs()

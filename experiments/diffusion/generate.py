@@ -275,6 +275,8 @@ def generate_prior_trajectory(
             **diffusion.sampler.config,
         )
         x1 = torch.randn(len(timestamps), padded_trajectory_size * state_size).cuda()
+        # arXiv:2306.10574 (SDA): non-autoregressive trajectory generation starts from
+        # high noise and integrates reverse diffusion to sample the prior jointly.
         samp_start = (x1 * schedule.sigma_tmax().cuda()).flatten(1).cuda()
         return sampler(samp_start).reshape((-1, padded_trajectory_size, *latent_shape)).cpu()
 
