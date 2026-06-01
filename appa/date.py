@@ -203,7 +203,8 @@ def add_hours(date: str, hour: int, offset: int) -> tuple[str, int]:
 
 
 def interval_to_tensor(
-    start_date: str, end_date: str, start_hour: int = 0, end_hour: int = 23
+    start_date: str, end_date: str, start_hour: int = 0, end_hour: int = 23,
+    dt: timedelta = None,
 ) -> Tensor:
     r"""Creates a tensor containing the timestamps of an interval.
 
@@ -212,25 +213,29 @@ def interval_to_tensor(
         start_hour: The hour of the day at the start of the interval, between 0 and 23.
         end_date: The end date of the interval, formatted as "YYYY-MM-DD".
         end_hour: The hour of the day at the end of the interval, between 0 and 23.
+        dt: The time between each element in the interval (default 1 hour).
 
     Returns:
         A tensor of shape (N, 4) containing the year, month, day, and hour for each
             element in the interval.
 
     """
+    if dt is None:
+        dt = timedelta(hours=1)
     start = datetime.strptime(f"{start_date} {start_hour}", "%Y-%m-%d %H")
     end = datetime.strptime(f"{end_date} {end_hour}", "%Y-%m-%d %H")
 
     dates = []
     while start <= end:
         dates.append([start.year, start.month, start.day, start.hour])
-        start += timedelta(hours=1)
+        start += dt
 
     return torch.tensor(dates)
 
 
 def split_interval(
-    nb_splits: int, start_date: str, end_date: str, start_hour: int = 0, end_hour: int = 23
+    nb_splits: int, start_date: str, end_date: str, start_hour: int = 0, end_hour: int = 23,
+    dt: timedelta = None,
 ):
     r"""Splits an interval into `nb_splits` parts.
 
@@ -240,12 +245,13 @@ def split_interval(
         end_date: The end date of the interval, formatted as "YYYY-MM-DD".
         start_hour: The hour of the day at the start of the interval, between 0 and 23.
         end_hour: The hour of the day at the end of the interval, between 0 and 23.
+        dt: The time between each element in the interval (default see `interval_to_tensor`).
 
     Returns:
         A list of tuples containing the start and end dates and hours for each split.
     """
 
-    intervals = interval_to_tensor(start_date, end_date, start_hour, end_hour)
+    intervals = interval_to_tensor(start_date, end_date, start_hour, end_hour, dt=dt)
     intervals = torch.tensor_split(intervals, nb_splits)
 
     split_intervals = []

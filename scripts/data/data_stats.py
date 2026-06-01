@@ -1,5 +1,7 @@
 r"""Script to compute pixel-space statistics over a dataset."""
 
+from datetime import timedelta
+
 import numpy as np
 import shutil
 import sys
@@ -8,11 +10,11 @@ import torch
 import wandb
 import xarray as xr
 
-from dawgz import after, job, schedule
+from dawgz import array, job, schedule
 from omegaconf import OmegaConf
 from pathlib import Path
 
-from appa.config import PATH_ERA5
+from appa.config import PROJECT, PATH_ERA5, PATH_STAT
 from appa.config.hydra import compose
 from appa.data.const import (
     CONTEXT_VARIABLES,
@@ -29,14 +31,14 @@ from appa.date import split_interval
 def compute_statistics(config):
     num_chunks = config.num_chunks
     output_path = Path(config.output_path)
-    tmp_path = output_path.parent / "tmp"
+    tmp_path = output_path.parent / "stats_tmp"
     tmp_path.mkdir(parents=True, exist_ok=True)
 
-    time_intervals = split_interval(num_chunks, config.start_date, config.end_date)
+    time_intervals = split_interval(num_chunks, config.start_date, config.end_date, dt=timedelta(hours=config.time_interval))
 
+    chunk_job_name = "era5_stats_map"
     @job(
-        name="appa era5 stats (chunk)",
-        array=num_chunks,
+        name=chunk_job_name,
         **config.hardware.chunk,
     )
     def compute_stats_chunk(rank: int):
@@ -89,9 +91,8 @@ def compute_statistics(config):
             tmp_path / f"{rank}.pt",
         )
 
-    @after(compute_stats_chunk)
     @job(
-        name="appa era5 stats (merge)",
+        name="era5_stats_reduce",
         **config.hardware.aggregate,
     )
     def aggregate():
@@ -162,17 +163,20 @@ def compute_statistics(config):
 
         ds.to_zarr(output_path, mode="w", consolidated=True)
 
+    compute_stats_chunks = array(
+        *(compute_stats_chunk(rank) for rank in range(num_chunks)),
+        name=chunk_job_name,
+    )
+
     schedule(
-        aggregate,
+        aggregate().after(compute_stats_chunks),
         name="appa era5 stats",
-        export="ALL",
-        account=config.hardware.account,
-        backend="slurm",
+        backend=config.hardware.backend,
     )
 
 
 if __name__ == "__main__":
-    config = compose("configs/data_stats.yaml", overrides=sys.argv[1:])
+    config = compose(PROJECT/"scripts/data/configs/data_stats.yaml", overrides=sys.argv[1:])
     OmegaConf.set_readonly(config, False)
     OmegaConf.set_struct(config, False)
 
@@ -181,5 +185,7 @@ if __name__ == "__main__":
 
     if config.data_path == "era5":
         config.data_path = PATH_ERA5
+    if config.output_path == "":
+        config.output_path = PATH_STAT
 
     compute_statistics(config)

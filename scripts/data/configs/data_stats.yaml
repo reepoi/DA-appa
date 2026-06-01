@@ -1,8 +1,9 @@
 data_path: era5
-output_path: ???
+output_path: ""
 
 start_date: 1993-01-01
 end_date: 2021-12-31
+time_interval: 6  # in hours
 
 batch_size: 2
 num_chunks: 8
@@ -10,17 +11,22 @@ num_chunks: 8
 log_every: 1
 
 hardware:
-  backend: slurm  # or async
+  backend: cobalt  # or async
   account: users
   chunk:
-    cpus: 8
-    ram: 60GB
-    time: "2-00:00:00"
-    gpus: 1
-    partition: gpu
+    interpreter: uv run python
+    queue: gpu_v100_smx2
+    # cpus: 8
+    # ram: 60GB
+    time: "0"  # "2-00:00:00"
+    # throttle: 2  # jobs to submit at one time
+    # gpus: 1
+    # partition: gpu
   aggregate:
-    cpus: 8
-    ram: 60GB
-    time: "10:00"
-    partition: gpu
-    gpus: 1
+    interpreter: uv run python
+    queue: gpu_v100_smx2
+    # cpus: 8
+    # ram: 60GB
+    time: "60"  # "10:00"
+    # partition: gpu
+    # gpus: 1

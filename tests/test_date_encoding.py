@@ -1,8 +1,9 @@
 import math
 import pytest
 import torch
+from datetime import datetime, timedelta
 
-from appa.date import format_blanket_date, get_local_time_encoding, get_year_progress_encoding
+from appa.date import format_blanket_date, get_local_time_encoding, get_year_progress_encoding, split_interval, interval_to_tensor
 
 
 @pytest.mark.parametrize(
@@ -168,3 +169,9 @@ def test_date_to_string(start_date, end_date, expected_date):
     date_str = format_blanket_date(blanket_dates)
 
     assert date_str == expected_date, f"Expected {expected_date}, got {date_str}"
+
+
+@pytest.mark.parametrize('hours', [1, 6])
+def test_interval_to_tensor(hours):
+    t = interval_to_tensor('1970-01-01', '1970-01-01', dt=timedelta(hours=hours))
+    assert t.shape[0] * hours == 24
