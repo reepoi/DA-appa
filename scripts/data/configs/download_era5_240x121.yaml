@@ -1,5 +1,7 @@
 output_path: "/vast/users/ac.ttransue/appa/era5/"  # Path should end with .zarr
 
+# 1959-2023_01_10-6h-240x121_equiangular_with_poles_conservative.zarr
+
 start_date: "1993-01-01"
 end_date: "2021-12-31"
 
