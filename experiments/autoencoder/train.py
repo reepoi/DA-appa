@@ -250,6 +250,8 @@ def train(
 
     model_loss = AELoss(
         criterion=cfg.loss.error,
+        N_lat=cfg.ae.shape[0],
+        N_lon=cfg.ae.shape[1],
         latitude_weighting=cfg.loss.latitude_weighting,
         level_weighting=cfg.loss.level_weighting,
         levels=pressure_levels,
@@ -290,7 +292,7 @@ def train(
         if rank == 0 and not os.path.isfile(runpath / ".running"):
             print("Run aborted by removing the .running file. Stopping...")
             wandb.finish()
-            job_id = os.environ["SLURM_ARRAY_JOB_ID"]
+            # job_id = os.environ["SLURM_ARRAY_JOB_ID"]
             # os.system(f"scancel {job_id}")
             dist.destroy_process_group()
             return
@@ -571,13 +573,14 @@ if __name__ == "__main__":
         help="Enforces a number of nodes. Useful to avoid needing full nodes.",
     )
     parser.add_argument("--ram", type=str, default="60GB", help="Amount of RAM per GPU.")
-    parser.add_argument("--time", type=str, default="2-00:00:00", help="Time limit.")
-    parser.add_argument(
-        "--partition",
-        type=str,
-        default="gpu",
-        help="Slurm partition.",
-    )
+    parser.add_argument("--time", type=str, default="0", help="Time limit (default max Cobalt time)")
+    parser.add_argument("--queue", type=str, default="gpu_h100", help="Cobalt JLSE queue")
+    # parser.add_argument(
+    #     "--partition",
+    #     type=str,
+    #     default="gpu",
+    #     help="Slurm partition.",
+    # )
     parser.add_argument("--lap-start", type=int, default=0, help="Lap number to start from.")
     parser.add_argument("--laps", type=int, default=1, help="Maximum number of laps to perform.")
     parser.add_argument(
@@ -616,7 +619,7 @@ if __name__ == "__main__":
 
         args.overrides = [f"++forked_from={args.fork}"] + args.overrides
     else:
-        config_path = PROJECT/"configs/train.yaml"
+        config_path = PROJECT/"experiments/autoencoder/configs/train.yaml"
         runid = wandb.util.generate_id()
 
     cfg = compose(
@@ -630,18 +633,20 @@ if __name__ == "__main__":
         num_nodes = args.nodes
         num_gpus = args.gpus // num_nodes
     else:
-        gpu_per_nodes = 8 if args.partition == "ia" else 4  # gpu
-        num_nodes = args.gpus // gpu_per_nodes if args.gpus >= gpu_per_nodes else 1
-        num_gpus = min(args.gpus, gpu_per_nodes)  # Local number of GPUs.
+        # gpu_per_nodes = 8 if args.partition == "ia" else 4  # gpu
+        # num_nodes = args.gpus // gpu_per_nodes if args.gpus >= gpu_per_nodes else 1
+        # num_gpus = min(args.gpus, gpu_per_nodes)  # Local number of GPUs.
+        num_nodes = 1
+        num_gpus = args.gpus
 
     match = re.match(r"(\d+)([A-Za-z]+)", args.ram)
     ram_amount, unit = int(match.group(1)) * num_gpus, match.group(2)
     ram = f"{ram_amount}{unit}"
 
     if num_nodes > 1:
-        interpreter = f"torchrun --nnodes {num_nodes} --nproc-per-node {num_gpus} --rdzv_backend=c10d --rdzv_endpoint=${{SLURMD_NODENAME:-$(head -n 1 $COBALT_NODEFILE)}}:12345 --rdzv_id=${{SLURM_JOB_ID:-$COBALT_JOBID}}"
+        interpreter = f"uv run torchrun --nnodes {num_nodes} --nproc-per-node {num_gpus} --rdzv_backend=c10d --rdzv_endpoint=${{SLURMD_NODENAME:-$(head -n 1 $COBALT_NODEFILE)}}:12345 --rdzv_id=${{SLURM_JOB_ID:-$COBALT_JOBID}}"
     else:
-        interpreter = f"torchrun --nnodes 1 --nproc-per-node {num_gpus} --standalone"
+        interpreter = f"uv run torchrun --nnodes 1 --nproc-per-node {num_gpus} --standalone"
 
     env = [
         "export OMP_NUM_THREADS=" + f"{args.cpus_per_gpu}",
@@ -660,7 +665,7 @@ if __name__ == "__main__":
         gpus=num_gpus,
         ram=ram,
         time=args.time,
-        queue=args.partition,
+        queue=args.queue,
         # account=cfg.slurm_account,
     )
 
