@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .hydra import compose
 
-PROJECT = Path("/path/to/appa")
+PROJECT = Path(__file__).parent.parent.parent
 
 PATH_AE = PROJECT / "autoencoders"
 
