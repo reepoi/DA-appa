@@ -19,7 +19,7 @@ from appa.config.hydra import compose
 from appa.data.const import (
     CONTEXT_VARIABLES,
     ERA5_ATMOSPHERIC_VARIABLES,
-    ERA5_PRESSURE_LEVELS,
+    ERA5_PRESSURE_LEVELS, SUB_PRESSURE_LEVELS,
     ERA5_SURFACE_VARIABLES,
     ERA5_VARIABLES,
 )
@@ -47,7 +47,8 @@ def compute_statistics(config):
             *time_intervals[rank],
             state_variables=ERA5_VARIABLES,
             context_variables=CONTEXT_VARIABLES,
-            levels=ERA5_PRESSURE_LEVELS,
+            # levels=ERA5_PRESSURE_LEVELS,
+            levels=SUB_PRESSURE_LEVELS,
             fill_nans=False,
         )
 
@@ -113,13 +114,15 @@ def compute_statistics(config):
 
         num_surface_vars = len(ERA5_SURFACE_VARIABLES)
         num_atmospheric_vars = len(ERA5_ATMOSPHERIC_VARIABLES)
-        num_levels = len(ERA5_PRESSURE_LEVELS)
+        # num_levels = len(ERA5_PRESSURE_LEVELS)
+        num_levels = len(SUB_PRESSURE_LEVELS)
         num_context_vars = len(CONTEXT_VARIABLES)
 
         ds = xr.Dataset(
             coords={
                 "statistic": ["mean", "std"],
-                "level": ERA5_PRESSURE_LEVELS,
+                # "level": ERA5_PRESSURE_LEVELS,
+                "level": SUB_PRESSURE_LEVELS,
             },
         )
 
@@ -145,7 +148,8 @@ def compute_statistics(config):
                 ),
                 coords={
                     "statistic": ["mean", "std"],
-                    "level": ERA5_PRESSURE_LEVELS,
+                    # "level": ERA5_PRESSURE_LEVELS,
+                    "level": SUB_PRESSURE_LEVELS,
                 },
             )
 
