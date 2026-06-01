@@ -14,7 +14,7 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 
 import appa
 
-from appa.config import PATH_AE, PATH_ERA5, PATH_STAT
+from appa.config import PROJECT, PATH_AE, PATH_ERA5, PATH_STAT
 from appa.config.hydra import compose
 from appa.data.const import (
     CONTEXT_VARIABLES,
@@ -225,7 +225,7 @@ def train(
 
         wandb_args = dict(
             name=run_name,
-            project="appa_ae",
+            project="taost-da-appa",
             entity=cfg.wandb_entity,
             config=wandb_config,
             group=f"train_{runid}",
@@ -291,7 +291,7 @@ def train(
             print("Run aborted by removing the .running file. Stopping...")
             wandb.finish()
             job_id = os.environ["SLURM_ARRAY_JOB_ID"]
-            os.system(f"scancel {job_id}")
+            # os.system(f"scancel {job_id}")
             dist.destroy_process_group()
             return
 
@@ -616,7 +616,7 @@ if __name__ == "__main__":
 
         args.overrides = [f"++forked_from={args.fork}"] + args.overrides
     else:
-        config_path = "./configs/train.yaml"
+        config_path = PROJECT/"configs/train.yaml"
         runid = wandb.util.generate_id()
 
     cfg = compose(
@@ -639,31 +639,42 @@ if __name__ == "__main__":
     ram = f"{ram_amount}{unit}"
 
     if num_nodes > 1:
-        interpreter = f"torchrun --nnodes {num_nodes} --nproc-per-node {num_gpus} --rdzv_backend=c10d --rdzv_endpoint=$SLURMD_NODENAME:12345 --rdzv_id=$SLURM_JOB_ID"
+        interpreter = f"torchrun --nnodes {num_nodes} --nproc-per-node {num_gpus} --rdzv_backend=c10d --rdzv_endpoint=${{SLURMD_NODENAME:-$(head -n 1 $COBALT_NODEFILE)}}:12345 --rdzv_id=${{SLURM_JOB_ID:-$COBALT_JOBID}}"
     else:
         interpreter = f"torchrun --nnodes 1 --nproc-per-node {num_gpus} --standalone"
 
-    dawgz.schedule(
-        dawgz.job(
-            f=partial(train, runid, cfg, lap_start),
-            name=f"appa ae {runid}",
-            nodes=num_nodes,
-            cpus=args.cpus_per_gpu * num_gpus,
-            gpus=num_gpus,
-            ram=ram,
-            time=args.time,
-            partition=args.partition,
-            account=cfg.slurm_account,
-            array=range(lap_start, lap_start + args.laps),
-            array_throttle=1,
-        ),
-        name=f"appa ae {runid}",
-        backend="slurm",
+    env = [
+        "export OMP_NUM_THREADS=" + f"{args.cpus_per_gpu}",
+        "export WANDB_SILENT=true",
+        "export XDG_CACHE_HOME=$HOME/.cache",
+        "export TORCHINDUCTOR_CACHE_DIR=$HOME/.cache/torchinductor",
+    ]
+    job_name = "appa_ae_" + re.sub(r"\W", "_", runid)
+    job = dawgz.job(
+        partial(train, runid, cfg, lap_start),
+        name=job_name,
         interpreter=interpreter,
-        env=[
-            "export OMP_NUM_THREADS=" + f"{args.cpus_per_gpu}",
-            "export WANDB_SILENT=true",
-            "export XDG_CACHE_HOME=$HOME/.cache",
-            "export TORCHINDUCTOR_CACHE_DIR=$HOME/.cache/torchinductor",
-        ],
+        env=env,
+        nodes=num_nodes,
+        cpus=args.cpus_per_gpu * num_gpus,
+        gpus=num_gpus,
+        ram=ram,
+        time=args.time,
+        queue=args.partition,
+        # account=cfg.slurm_account,
+    )
+
+    previous_job = None
+    for lap in range(lap_start, lap_start + args.laps):
+        current_job = job(lap)
+
+        if previous_job is not None:
+            current_job.after(previous_job)
+
+        previous_job = current_job
+
+    dawgz.schedule(
+        current_job,
+        name=f"appa ae {runid}",
+        backend="cobalt",
     )
