@@ -6,6 +6,7 @@ from dawgz import job, schedule
 from functools import partial
 from omegaconf import OmegaConf
 
+from appa.config import PROJECT
 from appa.config.hydra import compose
 from appa.data.const import (
     CONTEXT_VARIABLES,
@@ -19,7 +20,7 @@ from appa.data.download import download
 from appa.date import assert_date_format
 
 if __name__ == "__main__":
-    config = compose("configs/download_era5.yaml", overrides=sys.argv[1:])
+    config = compose(PROJECT/"scripts/data/configs/download_era5_240x121.yaml", overrides=sys.argv[1:])
 
     assert_date_format(config.start_date)
     assert_date_format(config.end_date)
@@ -68,23 +69,22 @@ if __name__ == "__main__":
             **config,
             variables=job_vars,
             pressure_levels=list_levels,
-            total_levels=ERA5_NUM_COARSENED_LEVELS
-            if use_coarsened_levels
-            else ERA5_NUM_TOTAL_LEVELS,
+            total_levels=ERA5_NUM_COARSENED_LEVELS if use_coarsened_levels else ERA5_NUM_TOTAL_LEVELS,
         )
-
-        jobs.append(
-            job(
-                dawgz_download,
-                name="ERA5" if not split_vars else f"ERA5-{job_vars[0]}",
-                **hardware.job,
-            )
-        )
-
-    schedule(
-        *jobs,
-        name="ERA5",
-        export="ALL",
-        backend=hardware.backend,
-        account=hardware.account,
-    )
+        dawgz_download()
+    #
+    #     jobs.append(
+    #         job(
+    #             dawgz_download,
+    #             name="ERA5" if not split_vars else f"ERA5-{job_vars[0]}",
+    #             **hardware.job,
+    #         )()
+    #     )
+    #
+    # schedule(
+    #     *jobs,
+    #     name="ERA5",
+    #     # export="ALL",
+    #     backend=hardware.backend,
+    #     # account=hardware.account,
+    # )
