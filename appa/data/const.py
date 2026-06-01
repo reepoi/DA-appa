@@ -34,7 +34,7 @@ ERA5_AVAILABLE_CONFIGURATIONS = {
         64,
         True,
     ): "2022-6h-128x64_equiangular_with_poles_conservative.zarr",
-    (
+    (  # Target
         6,
         ERA5_NUM_COARSENED_LEVELS,
         240,
@@ -92,7 +92,8 @@ ERA5_SURFACE_VARIABLES = [
     "10m_v_component_of_wind",
     "mean_sea_level_pressure",
     "sea_surface_temperature",
-    "total_precipitation",
+    # "total_precipitation",
+    "total_precipitation_6hr",
 ]
 
 ERA5_ATMOSPHERIC_VARIABLES = [
@@ -106,7 +107,7 @@ ERA5_ATMOSPHERIC_VARIABLES = [
 ERA5_VARIABLES = ERA5_SURFACE_VARIABLES + ERA5_ATMOSPHERIC_VARIABLES
 
 CONTEXT_VARIABLES = [
-    "toa_incident_solar_radiation",
+    # "toa_incident_solar_radiation",
     "angle_of_sub_gridscale_orography",
     "anisotropy_of_sub_gridscale_orography",
     "slope_of_sub_gridscale_orography",
@@ -131,3 +132,15 @@ TOY_DATASET_VARIABLES = ["2m_temperature", "temperature"]
 TOY_DATASET_DATES_TRAINING = ("2017-07-01", "2017-09-30")
 TOY_DATASET_DATES_VALIDATION = ("2018-07-01", "2018-09-30")
 TOY_DATASET_DATES_TEST = ("2019-07-01", "2019-09-30")
+
+
+def display_available_datasets() -> None:
+    r"""Displays available ERA5 datasets on WeatherBench2."""
+    print("Available ERA5 datasets configurations:")
+    for config in ERA5_AVAILABLE_CONFIGURATIONS:
+        time_interval, levels, res_long, res_lat, poles = config
+        print(f"  {time_interval}h, {levels} levels, {res_long}x{res_lat}, poles={poles}")
+
+
+if __name__ == '__main__':
+    display_available_datasets()
