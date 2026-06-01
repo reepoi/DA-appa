@@ -23,12 +23,15 @@ def safe_save(obj: object, path: Union[str, Path]) -> None:
     """
 
     path = Path(path)
+    path_tmp = path.with_suffix(path.suffix + ".tmp")
+
+    torch.save(obj, path_tmp)
 
     if path.exists():
         path_prev = path.with_suffix(".prev.pth")
         shutil.copy2(path, path_prev)
 
-    torch.save(obj, path)
+    path_tmp.replace(path)
 
 
 def safe_load(path: Union[str, Path], map_location: str = "cpu") -> object:
