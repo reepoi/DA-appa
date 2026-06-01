@@ -4,6 +4,7 @@
 - `appa/config/__init__.py` hardcodes `PROJECT = Path("/path/to/appa")`; most data/training code reads paths from this constant, so update it (or patch constants at runtime) before running data/experiment scripts.
 - Experiment and data scripts use Hydra via `compose("configs/...yaml")` with relative paths; run them from their own directory (for example, `experiments/diffusion/`), not repo root.
 - CI is the source of truth for checks: run `pre-commit run --all-files --config pre-commit.yml` and `pytest tests`.
+- Never reformat existing code that you did not write unless it is necessary for the functionality you are implementing, and do not perform incidental refactors unless explicitly asked.
 
 ## Verified commands
 - Full tests: `pytest tests`
