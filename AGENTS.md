@@ -38,6 +38,3 @@
 - Physics/plots pipeline: `experiments/physics/power_spectra.py`, `experiments/physics/physical_consistency.py`, then `scripts/plots/*.py` for paper figures.
 
 - For quick paper reproduction with released assets, follow the Wiki page `Using-our-Pre-trained-Weights` and keep directory structure consistent with `PATH_AE` expectations.
-
-## Dependency/config caveat
-- `pyproject.toml` is minimal and does not list runtime deps; pinned dependency and Ruff config live in `_pyproject.yaml`, while CI installs with `pip install .` plus explicit `pytest`. Treat CI workflow and existing environment as authoritative when validating changes.
