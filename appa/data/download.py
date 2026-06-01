@@ -73,6 +73,7 @@ def download(
     """
 
     url = get_bucket_url(time_interval, total_levels, resolution, include_poles)
+    output_path = Path(output_path)/Path(url).name
     print(f"Downloading ERA5 data from {url}...", flush=True)
 
     data = xr.open_zarr(
