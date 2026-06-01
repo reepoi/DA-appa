@@ -1,0 +1,25 @@
+output_path: "/vast/users/ac.ttransue/appa/era5/"  # Path should end with .zarr
+
+start_date: "1993-01-01"
+end_date: "2021-12-31"
+
+time_interval: 6  # in hours
+resolution: 240x121
+
+variables: era5  # or custom list
+pressure_levels: era5_sub  # or era5_sub, or a custom list
+
+use_coarsened_levels: true  # only affects the chosen Google Storage bucket URL
+include_poles: true
+split_vars: false  # download separately
+chunk_size: 6  # in hours
+
+hardware:
+  backend: cobalt  # or async
+  account: users
+  job:
+    # cpus: 8
+    # ram: 16GB
+    time: "06:00:00"
+    interpreter: uv run python
+    queue: thing
