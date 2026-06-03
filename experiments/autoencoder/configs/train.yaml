@@ -1,5 +1,5 @@
 defaults:
-  - ae: cae_f32
+  - ae: cae_240x121_f6
   - optim: soap
 
 train:
@@ -15,7 +15,7 @@ train:
   save_interval: 8192
   shuffle_training: true
   trajectory_size: 1
-  sub_pressure_levels: false
+  sub_pressure_levels: true
 
 valid:
   log_interval: 16384
@@ -30,5 +30,5 @@ loss:
   level_weighting: false
   l2_weight: 0.
 
-slurm_account: sail
-wandb_entity: montefiore_sail
+slurm_account: taost
+wandb_entity: utah-math-data-science
