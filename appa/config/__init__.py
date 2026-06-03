@@ -16,4 +16,4 @@ PATH_ERA5 = Path("/vast/users/ac.ttransue/appa/era5/1959-2023_01_10-6h-240x121_e
 PATH_STAT = PATH_ERA5.parent/f'stats_{PATH_ERA5.name}'
 PATH_MASK = PATH_ERA5.parent/f'masks_{PATH_ERA5.name}'
 
-PATH_AE = PATH_ERA5.parent/"autoencoders"
+PATH_AE = PATH_ERA5.parent.parent/"autoencoders"
