@@ -68,6 +68,8 @@ class ResBlock(nn.Module):
         )
 
         self.ffn[-1].weight.data.mul_(1e-2)
+        if self.ffn[-1].bias is not None:
+            self.ffn[-1].bias.data.zero_()
 
     def _forward(self, x: Tensor) -> Tensor:
         r"""

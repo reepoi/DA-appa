@@ -4,9 +4,10 @@ import torch
 from pathlib import Path
 
 from appa.grid import create_icosphere, create_N320
-from appa.nn.cae import conv_ae
+from appa.nn.cae import ResBlock, conv_ae
 from appa.nn.gae import GraphAE
 from appa.nn.graph import GraphPoolAttention, GraphSelfAttention
+from appa.nn.layers import ConvNd
 
 param_combinations = [
     (1, 3, 1, [16], 2, [2], [2], [1.5], "softclip", 0.5),
@@ -15,6 +16,27 @@ param_combinations = [
     (1, 3, 2, [8], 2, [2], [2], [2], "asinh", 0.5),
     (1, 3, 1, [8], 2, [2], [2], [3], None, 0.5),
 ]
+
+
+def test_convnd_identity_init_zeros_bias():
+    conv = ConvNd(
+        in_channels=2,
+        out_channels=4,
+        spatial=2,
+        kernel_size=3,
+        padding=1,
+        identity_init=True,
+    )
+
+    assert conv.bias is not None
+    assert torch.all(conv.bias == 0)
+
+
+def test_resblock_final_bias_is_zero():
+    block = ResBlock(channels=4, kernel_size=3, padding=1)
+
+    assert block.ffn[-1].bias is not None
+    assert torch.all(block.ffn[-1].bias == 0)
 
 
 @pytest.mark.parametrize(

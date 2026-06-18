@@ -85,6 +85,8 @@ def ConvNd(
 
         conv.weight.data.mul_(1e-2)
         conv.weight.data.add_(eye)
+        if conv.bias is not None:
+            conv.bias.data.zero_()
 
     return conv
 

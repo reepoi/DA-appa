@@ -271,6 +271,7 @@ def train(
     count_log_save = 0
     losses = []
     grads = []
+    latent_stats = []
 
     # Train
     ae.train()
@@ -318,6 +319,24 @@ def train(
 
                 loss = model_loss(x, state) + cfg.loss.l2_weight * (z**2).mean()
 
+                z_detached = z.detach()
+                z_abs = z_detached.abs()
+                saturation = ae.module.saturation
+                saturation_bound = ae.module.saturation_bound
+                if saturation in ("softclip", "softclip2", "tanh"):
+                    z_sat_frac = (z_abs > 0.9 * saturation_bound).float().mean()
+                else:
+                    z_sat_frac = torch.as_tensor(float("nan"), device=device)
+                latent_stats.append(
+                    torch.stack(
+                        (
+                            z_detached.square().mean().sqrt(),
+                            z_abs.max(),
+                            z_sat_frac,
+                        )
+                    )
+                )
+
             # Backward
             if acc_step + 1 == grad_acc_steps:
                 # Only synchronize the last step
@@ -347,25 +366,35 @@ def train(
         if cfg.train.log_interval <= count_log_train:
             losses = torch.stack(losses)
             grads = torch.stack(grads)
+            latent_stats = torch.stack(latent_stats)
 
             if rank == 0:
                 losses_list = [torch.empty_like(losses) for _ in range(world_size)]
                 grads_list = [torch.empty_like(grads) for _ in range(world_size)]
+                latent_stats_list = [torch.empty_like(latent_stats) for _ in range(world_size)]
             else:
                 losses_list = None
                 grads_list = None
+                latent_stats_list = None
 
             dist.gather(losses, losses_list, dst=0)
             dist.gather(grads, grads_list, dst=0)
+            dist.gather(latent_stats, latent_stats_list, dst=0)
 
             if rank == 0:
                 losses = torch.cat(losses_list).cpu()
                 grads = torch.cat(grads_list).cpu()
+                latent_stats = torch.cat(latent_stats_list).cpu()
                 logs["train/losses/mean"] = losses.mean().item()
                 logs["train/losses/std"] = losses.std(unbiased=False).item()
                 logs["train/grad_norm/mean"] = grads.mean().item()
                 logs["train/grad_norm/std"] = grads.std(unbiased=False).item()
                 logs["train/lr"] = optimizer.param_groups[0]["lr"]
+                logs["train/latent/rms"] = latent_stats[:, 0].mean().item()
+                logs["train/latent/abs_max"] = latent_stats[:, 1].max().item()
+                z_sat_frac = latent_stats[:, 2]
+                if z_sat_frac.isfinite().any():
+                    logs["train/latent/sat_frac_90"] = z_sat_frac[z_sat_frac.isfinite()].mean().item()
 
         # Validation
         if cfg.valid.log_interval <= count_log_val:
@@ -550,6 +579,7 @@ def train(
                 count_log_train = 0
                 losses = []
                 grads = []
+                latent_stats = []
                 if rank == 0:
                     update_steps.set_postfix(loss=logs["train/losses/mean"])
             if rank == 0:
