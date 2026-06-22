@@ -37,11 +37,79 @@ from appa.save import safe_load, safe_save, select_ae_architecture
 cloudpickle.register_pickle_by_value(appa)
 
 
+def set_model_channels(cfg: DictConfig, pressure_levels: list) -> None:
+    r"""Apply channel-count fields derived from the dataset configuration."""
+
+    with open_dict(cfg):
+        num_surface_variables = len(ERA5_SURFACE_VARIABLES) if ERA5_SURFACE_VARIABLES else 0
+        num_atmospheric_variables = (
+            (len(ERA5_ATMOSPHERIC_VARIABLES) * len(pressure_levels))
+            if ERA5_ATMOSPHERIC_VARIABLES and pressure_levels
+            else 0
+        )
+        num_context_variables = len(CONTEXT_VARIABLES) if CONTEXT_VARIABLES else 0
+        cfg.ae["in_channels"] = num_surface_variables + num_atmospheric_variables
+        cfg.ae["context_channels"] = num_context_variables
+
+
+def build_standard_ae(cfg: DictConfig, device):
+    r"""Build the standard autoencoder used by this training script."""
+
+    ae_arch = select_ae_architecture(cfg.ae.name)
+    return ae_arch(**cfg.ae).to(device)
+
+
+def standard_loss_shape(cfg: DictConfig) -> tuple[int, int]:
+    r"""Return the latitude/longitude shape used by the standard AE loss."""
+
+    return tuple(cfg.ae.shape)
+
+
+def standard_resume_state(
+    ae,
+    optimizer,
+    scheduler,
+    cfg: DictConfig,
+    prev_runpath,
+    device,
+    forked_run: bool,
+):
+    r"""Load the previous lap model, optimizer, scheduler, and metadata."""
+
+    for obj, name in zip(
+        (ae.module, optimizer, scheduler), ("model", "optimizer", "scheduler")
+    ):
+        ckpt_path = prev_runpath / f"{name}_last.pth"
+        ckpt = safe_load(ckpt_path, map_location=device)
+
+        if name == "model":
+            obj.load_state_dict(ckpt, strict=False)
+        else:
+            obj.load_state_dict(ckpt)
+
+    with open(prev_runpath / "metadata.yaml", "r") as f:
+        metadata = OmegaConf.load(f)
+
+    return metadata["last_step_done"] + 1, float(metadata["best_val_loss"])
+
+
+def standard_metadata(cfg: DictConfig) -> dict:
+    r"""Return additional metadata to persist for a standard AE run."""
+
+    return {}
+
+
 def train(
     runid: str,
     cfg: DictConfig,
     fork_lap: int = 0,
     lap: int = 0,
+    build_model_fn=build_standard_ae,
+    loss_shape_fn=standard_loss_shape,
+    resume_state_fn=standard_resume_state,
+    metadata_fn=standard_metadata,
+    run_label: str = "ae",
+    description_prefix: str = "AE",
 ):
     r"""Train for one lap an autoencoder.
 
@@ -137,19 +205,8 @@ def train(
     )
 
     # Model
-    with open_dict(cfg):
-        num_surface_variables = len(ERA5_SURFACE_VARIABLES) if ERA5_SURFACE_VARIABLES else 0
-        num_atmospheric_variables = (
-            (len(ERA5_ATMOSPHERIC_VARIABLES) * len(pressure_levels))
-            if ERA5_ATMOSPHERIC_VARIABLES and pressure_levels
-            else 0
-        )
-        num_context_variables = len(CONTEXT_VARIABLES) if CONTEXT_VARIABLES else 0
-        cfg.ae["in_channels"] = num_surface_variables + num_atmospheric_variables
-        cfg.ae["context_channels"] = num_context_variables
-
-    ae_arch = select_ae_architecture(cfg.ae.name)
-    ae = ae_arch(**cfg.ae).to(device)
+    set_model_channels(cfg, pressure_levels)
+    ae = build_model_fn(cfg, device)
 
     latent_shape = ae.latent_shape
 
@@ -158,8 +215,11 @@ def train(
         device_ids=[device],
     )
 
+    trainable_params = [p for p in ae.parameters() if p.requires_grad]
+    assert trainable_params, "No trainable parameters found."
+
     optimizer, scheduler = get_optimizer(
-        params=ae.parameters(),
+        params=trainable_params,
         update_steps=cfg.train.update_steps,
         **cfg.optim,
     )
@@ -177,22 +237,15 @@ def train(
             dist.destroy_process_group()
             return
 
-        for obj, name in zip(
-            (ae.module, optimizer, scheduler), ("model", "optimizer", "scheduler")
-        ):
-            ckpt_path = prev_runpath / f"{name}_last.pth"
-            ckpt = safe_load(ckpt_path, map_location=device)
-
-            if name == "model":
-                obj.load_state_dict(ckpt, strict=False)
-            else:
-                obj.load_state_dict(ckpt)
-
-        # Metadata json
-        with open(prev_runpath / "metadata.yaml", "r") as f:
-            metadata = OmegaConf.load(f)
-            start_step = metadata["last_step_done"] + 1
-            best_val_loss = float(metadata["best_val_loss"])
+        start_step, best_val_loss = resume_state_fn(
+            ae=ae,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            cfg=cfg,
+            prev_runpath=prev_runpath,
+            device=device,
+            forked_run=("forked_from" in cfg and lap == fork_lap),
+        )
     else:
         start_step = 0
         best_val_loss = float("inf")
@@ -207,6 +260,7 @@ def train(
 
         # Additional config fields
         wandb_config["num_model_params"] = sum(p.numel() for p in ae.parameters())
+        wandb_config["num_trainable_params"] = sum(p.numel() for p in trainable_params)
         wandb_config["path"] = runpath
         wandb_config["hardware"] = {
             "num_nodes": num_nodes,
@@ -216,9 +270,14 @@ def train(
         wandb_config["ae"]["latent_shape"] = latent_shape
 
         # Run name format
-        run_name = f"{runid} {cfg.ae.name}"
+        if run_label == "ae":
+            run_name = f"{runid} {cfg.ae.name}"
+            group = f"train_{runid}"
+        else:
+            run_name = f"{runid} {run_label} {cfg.ae.name}"
+            group = f"train_{run_label}_{runid}"
 
-        description = f"AE {cfg.ae.name} " + ae.module.description()
+        description = f"{description_prefix} {cfg.ae.name} " + ae.module.description()
 
         if "forked_from" in cfg:
             description = f"Forked from {cfg.forked_from}.\n" + description
@@ -228,7 +287,7 @@ def train(
             project="taost-da-appa",
             entity=cfg.wandb_entity,
             config=wandb_config,
-            group=f"train_{runid}",
+            group=group,
             resume="allow",
             notes=description,
         )
@@ -248,10 +307,11 @@ def train(
     scaler = GradScaler("cuda")
     precision = getattr(torch, cfg.train.precision)
 
+    loss_shape = loss_shape_fn(cfg)
     model_loss = AELoss(
         criterion=cfg.loss.error,
-        N_lat=cfg.ae.shape[0],
-        N_lon=cfg.ae.shape[1],
+        N_lat=loss_shape[0],
+        N_lon=loss_shape[1],
         latitude_weighting=cfg.loss.latitude_weighting,
         level_weighting=cfg.loss.level_weighting,
         levels=pressure_levels,
@@ -562,15 +622,14 @@ def train(
                 )
 
             with open(runpath / "metadata.yaml", "w") as f:
-                OmegaConf.save(
-                    {
-                        "last_step_done": step,
-                        "best_val_loss": best_val_loss,
-                        "lap": lap,
-                        "runid": runid,
-                    },
-                    f,
-                )
+                metadata = {
+                    "last_step_done": step,
+                    "best_val_loss": best_val_loss,
+                    "lap": lap,
+                    "runid": runid,
+                }
+                metadata.update(metadata_fn(cfg))
+                OmegaConf.save(metadata, f)
 
             count_log_save = 0
 
@@ -604,7 +663,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--ram", type=str, default="60GB", help="Amount of RAM per GPU.")
     parser.add_argument("--time", type=str, default="0", help="Time limit (default max Cobalt time)")
-    parser.add_argument("--queue", type=str, default="gpu_h100", help="Cobalt JLSE queue")
+    parser.add_argument("--queue", type=str, default="gpu_v100_smx2", help="Cobalt JLSE queue")
     # parser.add_argument(
     #     "--partition",
     #     type=str,
