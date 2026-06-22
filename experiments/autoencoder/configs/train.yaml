@@ -27,7 +27,7 @@ valid:
 loss:
   error: mse
   latitude_weighting: true
-  level_weighting: false
+  level_weighting: true
   l2_weight: 0.
 
 slurm_account: taost
