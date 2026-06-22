@@ -32,7 +32,7 @@ dependencies = [
 dawgz = { path = "../dawgz", editable = true }
 
 [tool.setuptools]
-packages = ["appa"]
+packages = ["appa", "experiments"]
 
 [dependency-groups]
 dev = [
