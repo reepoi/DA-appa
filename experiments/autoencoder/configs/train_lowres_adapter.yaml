@@ -1,0 +1,13 @@
+defaults:
+  - train
+  - override /ae: cae_f32
+  - _self_
+
+adapter:
+  pretrained_checkpoint: /vast/users/ac.ttransue/appa/paper_precomputed/autoencoders/workshop/0/model_last.pth
+  lowres_shape: [121, 240]
+  injection_shape: [92, 188]
+  train_reused: false
+  reset_optimizer_on_fork: true
+  block_type: plain
+  blocks_per_stage: 1

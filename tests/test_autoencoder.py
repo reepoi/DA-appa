@@ -296,3 +296,54 @@ def test_cae(
 
     assert torch.allclose(z, z_copy)
     assert torch.allclose(x_reconstructed, x_reconstructed_copy)
+
+
+def test_cae_periodic_lon(tmp_path: Path):
+    autoencoder = conv_ae(
+        in_channels=2,
+        context_channels=0,
+        hid_channels=[4, 4],
+        hid_blocks=[1, 1],
+        resize=2,
+        lat_channels=3,
+        shape=[5, 8],
+        periodic_lon=True,
+    )
+
+    batch_size = 2
+    x = torch.randn(size=(batch_size, 5 * 8, 2))
+    t = torch.randint(13, size=(batch_size, 4))
+    z, x_reconstructed = autoencoder(x, t)
+
+    h, w, _ = autoencoder.latent_shape
+    assert z.shape == (batch_size, h * w, 3)
+    assert x_reconstructed.shape == x.shape
+
+    loss = x_reconstructed.square().sum()
+    loss.backward()
+
+    for p in autoencoder.parameters():
+        assert p.grad is not None
+        assert torch.all(torch.isfinite(p.grad))
+
+    torch.save(autoencoder.state_dict(), tmp_path / "autoencoder_state.pth")
+
+    autoencoder_copy = conv_ae(
+        in_channels=2,
+        context_channels=0,
+        hid_channels=[4, 4],
+        hid_blocks=[1, 1],
+        resize=2,
+        lat_channels=3,
+        shape=[5, 8],
+        periodic_lon=True,
+    )
+    autoencoder_copy.load_state_dict(
+        torch.load(tmp_path / "autoencoder_state.pth", weights_only=True)
+    )
+
+    autoencoder_copy.eval()
+    z_copy, x_reconstructed_copy = autoencoder_copy(x, t)
+
+    assert torch.allclose(z, z_copy)
+    assert torch.allclose(x_reconstructed, x_reconstructed_copy)

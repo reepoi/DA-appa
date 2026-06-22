@@ -105,6 +105,7 @@ class ConvEncoder(nn.Module):
         pixel_shuffle: Whether to use pixel shuffling or not.
         spatial: The number of spatial dimensions.
         periodic: Whether the spatial dimensions are periodic or not.
+        periodic_lon: Whether only the longitude dimension is periodic.
         dropout: The dropout rate in :math:`[0, 1]`.
         checkpointing: Whether to use gradient checkpointing or not.
         identity_init: Initialize down/upsampling convolutions as identity.
@@ -123,6 +124,7 @@ class ConvEncoder(nn.Module):
         spatial: int = 2,
         patch_size: Union[int, Sequence[int]] = 1,
         periodic: bool = False,
+        periodic_lon: bool = False,
         dropout: Optional[float] = None,
         checkpointing: bool = False,
         identity_init: bool = True,
@@ -140,10 +142,17 @@ class ConvEncoder(nn.Module):
         if isinstance(patch_size, int):
             patch_size = [patch_size] * spatial
 
+        if periodic_lon:
+            assert spatial == 2, "Longitude-only periodic padding requires 2 spatial dimensions."
+
         kwargs = dict(
             kernel_size=tuple(kernel_size),
             padding=tuple(k // 2 for k in kernel_size),
-            padding_mode="circular" if periodic else "zeros",
+            padding_mode=("constant", "circular")
+            if periodic_lon and not periodic
+            else "circular"
+            if periodic
+            else "zeros",
         )
 
         self.patch = Patchify(patch_size=patch_size)
@@ -243,6 +252,7 @@ class ConvDecoder(nn.Module):
         pixel_shuffle: Whether to use pixel shuffling or not.
         spatial: The number of spatial dimensions.
         periodic: Whether the spatial dimensions are periodic or not.
+        periodic_lon: Whether only the longitude dimension is periodic.
         dropout: The dropout rate in :math:`[0, 1]`.
         checkpointing: Whether to use gradient checkpointing or not.
         identity_init: Initialize down/upsampling convolutions as identity.
@@ -261,6 +271,7 @@ class ConvDecoder(nn.Module):
         spatial: int = 2,
         patch_size: Union[int, Sequence[int]] = 1,
         periodic: bool = False,
+        periodic_lon: bool = False,
         dropout: Optional[float] = None,
         checkpointing: bool = False,
         identity_init: bool = True,
@@ -278,10 +289,17 @@ class ConvDecoder(nn.Module):
         if isinstance(patch_size, int):
             patch_size = [patch_size] * spatial
 
+        if periodic_lon:
+            assert spatial == 2, "Longitude-only periodic padding requires 2 spatial dimensions."
+
         kwargs = dict(
             kernel_size=tuple(kernel_size),
             padding=tuple(k // 2 for k in kernel_size),
-            padding_mode="circular" if periodic else "zeros",
+            padding_mode=("constant", "circular")
+            if periodic_lon and not periodic
+            else "circular"
+            if periodic
+            else "zeros",
         )
 
         self.unpatch = Unpatchify(patch_size=patch_size)
@@ -493,6 +511,7 @@ def conv_ae(
     saturation: str = "softclip2",
     saturation_bound: float = 5.0,
     noise_level: float = 0.0,
+    periodic_lon: bool = False,
     # Ignore
     latent_shape: Optional[Tuple] = None,
     name: Optional[str] = None,
@@ -506,6 +525,7 @@ def conv_ae(
         in_channels=in_channels,
         out_channels=lat_channels,
         spatial=spatial,
+        periodic_lon=periodic_lon,
         **kwargs,
     )
 
@@ -513,6 +533,7 @@ def conv_ae(
         in_channels=lat_channels,
         out_channels=in_channels,
         spatial=spatial,
+        periodic_lon=periodic_lon,
         **kwargs,
     )
 

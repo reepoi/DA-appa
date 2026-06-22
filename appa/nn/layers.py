@@ -13,11 +13,55 @@ __all__ = [
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
+from collections.abc import Sequence as SequenceABC
 from einops.layers.torch import Rearrange
 from torch import Tensor
 from torch.utils.checkpoint import checkpoint
 from typing import Sequence, Union
+
+
+class MixedPadConvNd(nn.Module):
+    r"""Convolution wrapper with per-dimension padding modes."""
+
+    def __init__(
+        self,
+        conv: nn.Module,
+        padding: Sequence[int],
+        padding_mode: Sequence[str],
+    ):
+        super().__init__()
+
+        self.conv = conv
+        self.padding = tuple(padding)
+        self.padding_mode = tuple(padding_mode)
+
+    @property
+    def weight(self):
+        return self.conv.weight
+
+    @property
+    def bias(self):
+        return self.conv.bias
+
+    @property
+    def out_channels(self):
+        return self.conv.out_channels
+
+    def forward(self, x: Tensor) -> Tensor:
+        # Pad dimensions one at a time so latitude can be non-periodic while
+        # longitude remains periodic.
+        for dim, (pad, mode) in enumerate(zip(reversed(self.padding), reversed(self.padding_mode))):
+            if pad == 0:
+                continue
+
+            pads = [0] * (2 * len(self.padding))
+            pads[2 * dim] = pad
+            pads[2 * dim + 1] = pad
+            x = F.pad(x, tuple(pads), mode=mode)
+
+        return self.conv(x)
 
 
 def Linear(in_features: int, out_features: int, identity_init: bool = False, **kwargs):
@@ -72,6 +116,18 @@ def ConvNd(
     else:
         raise NotImplementedError()
 
+    padding = kwargs.get("padding", 0)
+    padding_mode = kwargs.get("padding_mode", "zeros")
+    mixed_padding = isinstance(padding_mode, SequenceABC) and not isinstance(padding_mode, str)
+
+    if mixed_padding:
+        if isinstance(padding, int):
+            padding = [padding] * spatial
+
+        kwargs = kwargs.copy()
+        kwargs["padding"] = 0
+        kwargs.pop("padding_mode")
+
     conv = Conv(in_channels, out_channels, **kwargs)
 
     if identity_init:
@@ -88,7 +144,10 @@ def ConvNd(
         if conv.bias is not None:
             conv.bias.data.zero_()
 
-    return conv
+    if mixed_padding:
+        return MixedPadConvNd(conv, padding=padding, padding_mode=padding_mode)
+    else:
+        return conv
 
 
 class LayerNorm(nn.Module):
