@@ -149,7 +149,14 @@ def _(ae_config):
             label = f"{feature_index:02d} | {atm_variable} @ {level} hPa"
             feature_options.append(label)
             feature_names.append(atm_variable)
-    return feature_names, feature_options, pressure_levels, sub_pressure_levels
+    return (
+        ATMOSPHERIC_VARIABLES,
+        SURFACE_VARIABLES,
+        feature_names,
+        feature_options,
+        pressure_levels,
+        sub_pressure_levels,
+    )
 
 
 @app.cell
@@ -325,6 +332,53 @@ def _(
         ]
     )
     return base_variable_name, metrics_rows
+
+
+@app.cell
+def _(
+    ATMOSPHERIC_VARIABLES,
+    SURFACE_VARIABLES,
+    mse_by_feature,
+    np,
+    plt,
+    pressure_levels,
+    standardized_mse_by_feature,
+):
+    rmse_by_feature = np.sqrt(mse_by_feature.numpy())
+    standardized_rmse_by_feature = np.sqrt(standardized_mse_by_feature.numpy())
+    atmospheric_rmse_unstd = rmse_by_feature[len(SURFACE_VARIABLES) :].reshape(
+        len(ATMOSPHERIC_VARIABLES), len(pressure_levels)
+    )
+    atmospheric_rmse_std = standardized_rmse_by_feature[len(SURFACE_VARIABLES) :].reshape(
+        len(ATMOSPHERIC_VARIABLES), len(pressure_levels)
+    )
+
+    profile_fig, profile_axes = plt.subplots(
+        1, 2, figsize=(13, 6), sharey=True, constrained_layout=True
+    )
+    for profile_channel, rmse_unstd, rmse_std in zip(
+        ATMOSPHERIC_VARIABLES, atmospheric_rmse_unstd, atmospheric_rmse_std
+    ):
+        profile_axes[0].plot(rmse_unstd, pressure_levels, marker="o", label=profile_channel)
+        profile_axes[1].plot(rmse_std, pressure_levels, marker="o", label=profile_channel)
+
+    profile_axes[0].set_title("RMSE by pressure level")
+    profile_axes[0].set_xlabel("RMSE")
+    profile_axes[0].set_xscale("log")
+    profile_axes[0].set_ylabel("Pressure level (hPa)")
+    profile_axes[1].set_title("Standardized RMSE by pressure level")
+    profile_axes[1].set_xlabel("Standardized RMSE")
+    profile_axes[1].set_xticks(np.unique(np.concatenate(([0], profile_axes[1].get_xticks()))))
+    for profile_axis in profile_axes:
+        profile_axis.set_yticks(pressure_levels)
+        profile_axis.grid(True, alpha=0.3)
+    profile_axes[0].invert_yaxis()
+    handles, labels = profile_axes[1].get_legend_handles_labels()
+    profile_fig.legend(
+        handles, labels, title="Channel", bbox_to_anchor=(1.02, 1), loc="upper left"
+    )
+    profile_fig
+    return rmse_by_feature, standardized_rmse_by_feature
 
 
 @app.cell
