@@ -6,10 +6,105 @@ import pytest
 import torch
 import xarray as xr
 
+from einops import rearrange
 from torch.utils.data import DataLoader
 
 from appa.data.datasets import ERA5Dataset
 from appa.data.transforms import StandardizeTransform
+from appa.nn.layers import ConvNd
+
+
+def test_era5_zarr_to_tensor_returns_lat_lon_order():
+    time = pd.date_range("1999-01-01", periods=1, freq="h")
+    longitude = np.array([0.0, 90.0, 180.0, 270.0], dtype=np.float32)
+    latitude = np.array([-45.0, 0.0, 45.0], dtype=np.float32)
+
+    values = np.empty((len(time), len(longitude), len(latitude)), dtype=np.float32)
+    for lon_idx in range(len(longitude)):
+        for lat_idx in range(len(latitude)):
+            values[0, lon_idx, lat_idx] = 10 * lon_idx + lat_idx
+
+    sample = xr.Dataset(
+        {
+            "toy": (
+                ["time", "longitude", "latitude"],
+                values,
+            )
+        },
+        coords={"time": time, "longitude": longitude, "latitude": latitude},
+    )
+
+    dataset = ERA5Dataset.__new__(ERA5Dataset)
+    tensor = dataset._zarr_to_tensor(sample, ["toy"])
+
+    expected = torch.tensor(
+        [
+            [0.0, 10.0, 20.0, 30.0],
+            [1.0, 11.0, 21.0, 31.0],
+            [2.0, 12.0, 22.0, 32.0],
+        ]
+    )
+
+    assert tensor.shape == (1, 1, len(latitude), len(longitude))
+    assert torch.equal(tensor[0, 0], expected)
+
+
+def test_era5_tensor_order_matches_cae_flattening():
+    state = torch.tensor(
+        [
+            [0.0, 10.0, 20.0, 30.0],
+            [1.0, 11.0, 21.0, 31.0],
+            [2.0, 12.0, 22.0, 32.0],
+        ]
+    )
+    state = state[None, None, None]
+
+    flat = rearrange(state, "B T Z Lat Lon -> (B T) (Lat Lon) Z")
+    grid = rearrange(flat, "B (Lat Lon) Z -> B Z Lat Lon", Lat=3, Lon=4)
+
+    assert torch.equal(grid, state.reshape(1, 1, 3, 4))
+
+
+def test_periodic_padding_wraps_geographic_longitude_axis():
+    time = pd.date_range("1999-01-01", periods=1, freq="h")
+    longitude = np.array([0.0, 90.0, 180.0, 270.0], dtype=np.float32)
+    latitude = np.array([-45.0, 0.0, 45.0], dtype=np.float32)
+
+    values = np.empty((len(time), len(longitude), len(latitude)), dtype=np.float32)
+    for lon_idx in range(len(longitude)):
+        for lat_idx in range(len(latitude)):
+            values[0, lon_idx, lat_idx] = 10 * lon_idx + lat_idx
+
+    sample = xr.Dataset(
+        {
+            "toy": (
+                ["time", "longitude", "latitude"],
+                values,
+            )
+        },
+        coords={"time": time, "longitude": longitude, "latitude": latitude},
+    )
+
+    dataset = ERA5Dataset.__new__(ERA5Dataset)
+    state = dataset._zarr_to_tensor(sample, ["toy"])[None]
+    flat = rearrange(state, "B T Z Lat Lon -> (B T) (Lat Lon) Z")
+    grid = rearrange(flat, "B (Lat Lon) Z -> B Z Lat Lon", Lat=3, Lon=4)
+
+    conv = ConvNd(
+        in_channels=1,
+        out_channels=1,
+        spatial=2,
+        kernel_size=(1, 3),
+        padding=(0, 1),
+        padding_mode=("constant", "circular"),
+        bias=False,
+    )
+    conv.weight.data.zero_()
+    conv.weight.data[0, 0, 0, 0] = 1.0
+
+    left_lon_neighbor = conv(grid)
+
+    assert torch.equal(left_lon_neighbor[..., 0], grid[..., -1])
 
 
 @pytest.fixture

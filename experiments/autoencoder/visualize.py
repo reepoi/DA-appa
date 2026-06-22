@@ -346,6 +346,8 @@ def _(
 ):
     rmse_by_feature = np.sqrt(mse_by_feature.numpy())
     standardized_rmse_by_feature = np.sqrt(standardized_mse_by_feature.numpy())
+    surface_rmse_unstd = rmse_by_feature[: len(SURFACE_VARIABLES)]
+    surface_rmse_std = standardized_rmse_by_feature[: len(SURFACE_VARIABLES)]
     atmospheric_rmse_unstd = rmse_by_feature[len(SURFACE_VARIABLES) :].reshape(
         len(ATMOSPHERIC_VARIABLES), len(pressure_levels)
     )
@@ -361,16 +363,29 @@ def _(
     ):
         profile_axes[0].plot(rmse_unstd, pressure_levels, marker="o", label=profile_channel)
         profile_axes[1].plot(rmse_std, pressure_levels, marker="o", label=profile_channel)
+    surface_pressure = 1050
+    for _surface_variable, rmse_unstd, rmse_std in zip(
+        SURFACE_VARIABLES, surface_rmse_unstd, surface_rmse_std
+    ):
+        profile_axes[0].scatter(
+            rmse_unstd, surface_pressure, marker="x", label=_surface_variable
+        )
+        profile_axes[1].scatter(
+            rmse_std, surface_pressure, marker="x", label=_surface_variable
+        )
 
-    profile_axes[0].set_title("RMSE by pressure level")
+    profile_axes[0].set_title("RMSE by pressure/surface level")
     profile_axes[0].set_xlabel("RMSE")
     profile_axes[0].set_xscale("log")
     profile_axes[0].set_ylabel("Pressure level (hPa)")
-    profile_axes[1].set_title("Standardized RMSE by pressure level")
+    profile_axes[1].set_title("Standardized RMSE by pressure/surface level")
     profile_axes[1].set_xlabel("Standardized RMSE")
     profile_axes[1].set_xticks(np.unique(np.concatenate(([0], profile_axes[1].get_xticks()))))
+    profile_levels = np.array([*pressure_levels, surface_pressure])
+    profile_level_labels = [str(level) for level in pressure_levels] + ["Surface"]
     for profile_axis in profile_axes:
-        profile_axis.set_yticks(pressure_levels)
+        profile_axis.set_yticks(profile_levels)
+        profile_axis.set_yticklabels(profile_level_labels)
         profile_axis.grid(True, alpha=0.3)
     profile_axes[0].invert_yaxis()
     handles, labels = profile_axes[1].get_legend_handles_labels()
@@ -406,9 +421,9 @@ def _(
     cmaps = ["viridis", "viridis", "seismic"]
     limits = [(value_min, value_max), (value_min, value_max), (-error_abs_max, error_abs_max)]
     for axis, image, title, cmap, (vmin, vmax) in zip(axes, images, titles, cmaps, limits):
-        # ERA5Dataset returns spatial tensors as (longitude, latitude). Matplotlib
-        # expects image rows, columns, so transpose to (latitude, longitude).
-        plot_image = np.roll(image, image.shape[0] // 2, axis=0).T
+        # Center the map on Greenwich while preserving image rows as latitude
+        # and columns as longitude.
+        plot_image = np.roll(image, image.shape[1] // 2, axis=1)
         plotted = axis.imshow(
             plot_image,
             cmap=cmap,

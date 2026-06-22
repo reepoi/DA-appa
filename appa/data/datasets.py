@@ -140,7 +140,7 @@ class ERA5Dataset(Dataset):
 
         sample = sample.to_stacked_array(
             new_dim="z_total", sample_dims=("time", "longitude", "latitude")
-        ).transpose("time", "z_total", ...)
+        ).transpose("time", "z_total", "latitude", "longitude")
 
         sample = torch.tensor(sample.load().data)
 
