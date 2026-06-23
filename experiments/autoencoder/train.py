@@ -663,7 +663,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--ram", type=str, default="60GB", help="Amount of RAM per GPU.")
     parser.add_argument("--time", type=str, default="0", help="Time limit (default max Cobalt time)")
-    parser.add_argument("--queue", type=str, default="gpu_v100_smx2", help="Cobalt JLSE queue")
+    parser.add_argument("--queue", type=str, default="gpu_h100", help="Cobalt JLSE queue")
     # parser.add_argument(
     #     "--partition",
     #     type=str,
