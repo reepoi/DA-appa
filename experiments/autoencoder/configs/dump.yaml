@@ -7,6 +7,7 @@ checkpoint: best  # or best
 
 start_date: 1993-01-01
 end_date: 2021-12-31
+time_interval: 6  # in hours
 
 batch_size: 1
 num_chunks: 5

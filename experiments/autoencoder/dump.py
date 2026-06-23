@@ -1,5 +1,7 @@
 r"""Encode ERA5 into latent space with an AE."""
 
+from datetime import timedelta
+
 import dask
 import gc
 import h5py
@@ -65,7 +67,7 @@ def dump_to_latent(config):
     chunk_throttle = chunk_settings.pop("throttle", None)
     aggregate_settings = job_settings(hardware_cfg.aggregate)
 
-    time_intervals = split_interval(num_chunks, start_date, end_date)
+    time_intervals = split_interval(num_chunks, config.start_date, config.end_date, dt=timedelta(hours=config.time_interval))
 
     chunk_job_name = "appa_dump_map"
     @job(
