@@ -4,10 +4,11 @@ import shutil
 import sys
 import torch
 
-from dawgz import after, job, schedule
-from omegaconf import DictConfig
+from dawgz import array, job, schedule
+from omegaconf import DictConfig, OmegaConf
 from pathlib import Path
 
+from appa.config import PROJECT
 from appa.config.hydra import compose
 from appa.data.datasets import LatentBlanketDataset
 from appa.date import assert_date_format
@@ -18,6 +19,7 @@ def compute_latent_statistics(
     latent_path: str,
     start_date: str,
     end_date: str,
+    time_interval: int,
     chunk_size: int,
     subchunk_size: int,
     hardware: DictConfig,
@@ -31,6 +33,7 @@ def compute_latent_statistics(
 
     assert latent_path.exists(), f"Latent data not found at {latent_path}."
 
+    end_hour = 24 - time_interval
     # arXiv:2504.18720v3 Sec. 3.1-3.2: latent mean/std are used to standardize
     # encoded blankets before denoiser training and downstream sampling.
     dataset = LatentBlanketDataset(
@@ -39,6 +42,7 @@ def compute_latent_statistics(
         end_date,
         1,
         standardize=False,
+        end_hour=end_hour,
     )
     num_samples = len(dataset)
     num_channels = dataset.get_dim()
@@ -47,10 +51,19 @@ def compute_latent_statistics(
     num_chunks = len(chunk_indices)
     chunk_sizes = [len(chunk) for chunk in chunk_indices]
 
+    def job_settings(section):
+        settings = OmegaConf.to_container(section, resolve=True)
+        if "account" in hardware and "account" not in settings:
+            settings["account"] = hardware.account
+        return settings
+
+    chunk_settings = job_settings(hardware.chunk)
+    chunk_throttle = chunk_settings.pop("throttle", None)
+    aggregate_settings = job_settings(hardware.aggregate)
+
     @job(
-        name="appa latent stats (chunk)",
-        array=num_chunks,
-        **hardware.chunk_stats,
+        name="appa_latent_stats_chunk",
+        **chunk_settings,
     )
     def chunk_stats(chunk_id: int):
         # h5 objects cannot be pickled :-)
@@ -60,11 +73,12 @@ def compute_latent_statistics(
             end_date,
             1,
             standardize=False,
+            end_hour=end_hour,
         )
 
         mean_x = torch.zeros(num_channels)
         mean_x2 = torch.zeros(num_channels)
-        N_el = 0
+        num_accumulated = 0
 
         indices = chunk_indices[chunk_id].split(subchunk_size)
 
@@ -72,14 +86,14 @@ def compute_latent_statistics(
 
         for index in indices:
             chunk = torch.tensor(dataset.latents[index])
-            new_el = torch.prod(torch.tensor(chunk.shape[:-1]))
-            mean_x = (N_el / (new_el + N_el)) * mean_x + (new_el / (N_el + new_el)) * chunk.mean(
+            num_new = torch.prod(torch.tensor(chunk.shape[:-1]))
+            mean_x = (num_accumulated / (num_new + num_accumulated)) * mean_x + (num_new / (num_accumulated + num_new)) * chunk.mean(
                 dim=(0, 1)
             )
-            mean_x2 = (N_el / (new_el + N_el)) * mean_x2 + (
-                new_el / (N_el + new_el)
+            mean_x2 = (num_accumulated / (num_new + num_accumulated)) * mean_x2 + (
+                num_new / (num_accumulated + num_new)
             ) * chunk.square().mean(dim=(0, 1))
-            N_el += new_el
+            num_accumulated += num_new
 
         safe_save(
             {
@@ -89,10 +103,9 @@ def compute_latent_statistics(
             tmp_stats_folder / f"stats_{chunk_id}.pth",
         )
 
-    @after(chunk_stats)
     @job(
-        name="appa latent stats (agg)",
-        **hardware.aggregate,
+        name="appa_latent_stats_reduce",
+        **aggregate_settings,
     )
     def aggregate():
         mean_x = torch.zeros(num_channels)
@@ -115,17 +128,21 @@ def compute_latent_statistics(
             f"Successfully saved statistics (mean={stats['mean'].mean()}, std={stats['std'].mean()})."
         )
 
+    chunk_array = array(
+        *(chunk_stats(chunk_id) for chunk_id in range(num_chunks)),
+        name="appa_latent_stats_map",
+        throttle=chunk_throttle,
+    )
+
     schedule(
-        aggregate,
+        aggregate().after(chunk_array),
         name="latent stats",
-        export="ALL",
-        backend="slurm",
-        account=hardware.account,
+        backend=hardware.backend,
     )
 
 
 if __name__ == "__main__":
-    config = compose("configs/latent_stats.yaml", overrides=sys.argv[1:])
+    config = compose(PROJECT / "scripts/data/configs/latent_stats.yaml", overrides=sys.argv[1:])
 
     assert_date_format(config.start_date)
     assert_date_format(config.end_date)

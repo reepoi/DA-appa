@@ -1,21 +1,20 @@
-latent_path: ???  # /path/to/appa/autoencoders/ae/lap/latents/id/dump.h5
+latent_path: /vast/users/ac.ttransue/appa/autoencoders/45nj4wnq/0/latents/i5a4l2d7/latent_dump_era5.h5  # /path/to/appa/autoencoders/ae/lap/latents/id/dump.h5
 
 chunk_size: 15000  # size per job
 subchunk_size: 300  # size per iteration in a job
 
 start_date: 1993-01-01
 end_date: 2021-12-31
+time_interval: 6  # in hours
 
 hardware:
-  backend: slurm  # or async
+  backend: cobalt  # or async
   account: users
-  chunk_stats:
-    cpus: 4
-    ram: 16GB
-    time: "45:00"
-    partition: gpu
+  chunk:
+    interpreter: uv run python
+    queue: gpu_v100_smx2
+    time: "0"  # "2-00:00:00"
   aggregate:
-    cpus: 4
-    ram: 32GB
-    time: "1:00:00"
-    partition: gpu
+    interpreter: uv run python
+    queue: gpu_v100_smx2
+    time: "0"  # "10:00"
