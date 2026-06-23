@@ -36,13 +36,11 @@ valid:
   n_valid_channels: 3
   denoising_steps: 64
 
-slurm_account: users
-
 # AE run that generated the latents (e.g., cg33oqw8/0)
-ae_run: ???
+ae_run: 45nj4wnq/0
 # ID of the latent data dump (e.g., k3j4l2fz)
-latent_dump: ???
-latent_data: "era5.h5"
+latent_dump: i5a4l2d7
+latent_data: "latent_dump_era5.h5"
 
-slurm_account: sail
-wandb_entity: montefiore_sail
+slurm_account: taost
+wandb_entity: utah-math-data-science
