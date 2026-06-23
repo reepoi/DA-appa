@@ -28,8 +28,8 @@ def _():
 
 @app.cell
 def _(Path):
-    DEFAULT_RUN_PATH = Path("/vast/users/ac.ttransue/appa/autoencoders/xla0mo5m/1")
-    DEFAULT_DAWGZ_PATH = Path("/home/ac.ttransue/GitHub/DA-appa/.dawgz/parched_present_5eb61d25")
+    DEFAULT_RUN_PATH = Path("/vast/users/ac.ttransue/appa/autoencoders/45nj4wnq/0")
+    DEFAULT_DAWGZ_PATH = Path("/home/ac.ttransue/GitHub/DA-appa/.dawgz/standing_appeal_06d83f7e")
     return DEFAULT_DAWGZ_PATH, DEFAULT_RUN_PATH
 
 
