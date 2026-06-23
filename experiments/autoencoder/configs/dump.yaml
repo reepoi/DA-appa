@@ -1,30 +1,36 @@
-model_path: ???  # /.../id/lap
+model_path: /vast/users/ac.ttransue/appa/autoencoders/45nj4wnq/0
 data_path: era5
-dump_name: "era5.h5"
+dump_name: "latent_dump_era5.h5"
 
-checkpoint: last  # or best
+# checkpoint: last  # or best
+checkpoint: best  # or best
 
 start_date: 1993-01-01
 end_date: 2021-12-31
 
 batch_size: 1
-num_chunks: 40
+num_chunks: 5
 
 log_every: 1000
 save_every: 1000
 
 hardware:
-  backend: slurm  # or async
+  backend: cobalt  # or async
   account: users
-  latent_chunk:
-    cpus: 8
-    gpus: 1
-    ram: 60GB
-    time: "3:00:00"
-    partition: gpu
+  chunk:
+    interpreter: uv run python
+    queue: gpu_v100_smx2
+    # cpus: 8
+    # ram: 60GB
+    time: "0"  # "2-00:00:00"
+    # throttle: 2  # jobs to submit at one time
+    # gpus: 1
+    # partition: gpu
   aggregate:
-    cpus: 16
-    gpus: 0
-    ram: 120GB
-    time: "15:00"
-    partition: cpu
+    interpreter: uv run python
+    queue: gpu_v100_smx2
+    # cpus: 8
+    # ram: 60GB
+    time: "0"  # "10:00"
+    # partition: gpu
+    # gpus: 1

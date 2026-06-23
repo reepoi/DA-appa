@@ -10,12 +10,12 @@ import time
 import torch
 import wandb
 
-from dawgz import after, job, schedule
+from dawgz import array, job, schedule
 from einops import rearrange
 from omegaconf import OmegaConf
 from pathlib import Path
 
-from appa.config import PATH_ERA5, PATH_STAT
+from appa.config import PROJECT, PATH_ERA5, PATH_STAT
 from appa.config.hydra import compose
 from appa.data.const import (
     CONTEXT_VARIABLES,
@@ -55,12 +55,22 @@ def dump_to_latent(config):
 
     hardware_cfg = config.hardware
 
+    def job_settings(section):
+        settings = OmegaConf.to_container(section, resolve=True)
+        if "account" in hardware_cfg and "account" not in settings:
+            settings["account"] = hardware_cfg.account
+        return settings
+
+    chunk_settings = job_settings(hardware_cfg.chunk)
+    chunk_throttle = chunk_settings.pop("throttle", None)
+    aggregate_settings = job_settings(hardware_cfg.aggregate)
+
     time_intervals = split_interval(num_chunks, start_date, end_date)
 
+    chunk_job_name = "appa_dump_map"
     @job(
-        name="appa dump (chunk)",
-        array=num_chunks,
-        **hardware_cfg.latent_chunk,
+        name=chunk_job_name,
+        **chunk_settings,
     )
     @torch.no_grad()
     def dump_chunk(rank: int):
@@ -110,8 +120,10 @@ def dump_to_latent(config):
         print("Local chunk size:", len_dl, flush=True)
 
         dump_tmp_file = h5py.File(output_path / f"tmp/{rank}.h5", "w")
-        dump_tmp_file.create_dataset("latents", (len_dl, *latent_state_shape), "float32")
-        dump_tmp_file.create_dataset("dates", (len_dl, 4), "int32")
+        dump_tmp_file.create_dataset(
+            "latents", (len(dataset), *latent_state_shape), "float32"
+        )
+        dump_tmp_file.create_dataset("dates", (len(dataset), 4), "int32")
 
         dumped_states = []
         timestamps = []
@@ -121,11 +133,15 @@ def dump_to_latent(config):
         def save_progress():
             nonlocal curr_idx, dumped_states, timestamps, start_time
 
+            if not dumped_states:
+                return
+
             dumped_states = np.concatenate(dumped_states, axis=0)
             timestamps = np.concatenate(timestamps, axis=0)
-            dump_tmp_file["latents"][curr_idx : curr_idx + len(dumped_states)] = dumped_states
-            dump_tmp_file["dates"][curr_idx : curr_idx + len(dumped_states)] = timestamps
-            curr_idx += len(dumped_states)
+            num_rows = dumped_states.shape[0]
+            dump_tmp_file["latents"][curr_idx : curr_idx + num_rows] = dumped_states
+            dump_tmp_file["dates"][curr_idx : curr_idx + num_rows] = timestamps
+            curr_idx += num_rows
 
             dumped_states = []
             timestamps = []
@@ -159,10 +175,9 @@ def dump_to_latent(config):
         save_progress()
         dump_tmp_file.close()
 
-    @after(dump_chunk)
     @job(
-        name="appa dump (merge)",
-        **hardware_cfg.aggregate,
+        name="appa_dump_reduce",
+        **aggregate_settings,
     )
     def aggregate():
         dataset = ERA5Dataset(
@@ -219,17 +234,21 @@ def dump_to_latent(config):
 
         shutil.rmtree(output_path / "tmp")
 
+    chunk_array = array(
+        *(dump_chunk(rank) for rank in range(num_chunks)),
+        name=chunk_job_name,
+        throttle=chunk_throttle,
+    )
+
     schedule(
-        aggregate,
+        aggregate().after(chunk_array),
         name="appa dump",
-        export="ALL",
-        account=config.hardware.account,
         backend=config.hardware.backend,
     )
 
 
 if __name__ == "__main__":
-    config = compose("configs/dump.yaml", overrides=sys.argv[1:])
+    config = compose(PROJECT / "experiments/autoencoder/configs/dump.yaml", overrides=sys.argv[1:])
     OmegaConf.set_readonly(config, False)
     OmegaConf.set_struct(config, False)
 
