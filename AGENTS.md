@@ -17,6 +17,7 @@
 - `experiments/`: paper workflows (autoencoder training, latent diffusion training, observations, physics evals).
 - `scripts/data/`: ERA5 download and dataset/stat preprocessing.
 - `scripts/plots/`: plotting entrypoints driven by YAML configs.
+- `docs/paper-experimental-details.md`: paper-pinned experimental setup from `arXiv:2504.18720v3`; use it to distinguish published settings from current config defaults.
 - `tests/`: unit tests using synthetic data; no external ERA5 files required for most tests.
 
 ## Execution gotchas
