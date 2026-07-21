@@ -27,6 +27,15 @@
 - The observations scripts are under `experiments/observations/` (`forecast.py`, `reanalysis.py`, `evaluate.py`), even when older docs mention `experiments/diffusion/forecast.py` or `.../reanalysis.py`.
 - Wiki examples sometimes use `latent_file`/`data.h5`; current code expects `latent_path` to point directly to the H5 file used by `LatentBlanketDataset`.
 
+## Inspecting dawgz runs
+- Run dawgz commands from the repository root. Use `.venv/bin/dawgz` when `dawgz` is not on `PATH`; `.venv/bin/dawgz` lists workflows, and `.venv/bin/dawgz <workflow-index> <job-index>` shows a job.
+- `.dawgz/workflows.csv` maps workflow names to IDs. Each workflow's artifacts are under `.dawgz/<workflow-id>/`.
+- Read `<scheduler-job-id>.error` for stderr and the first actionable traceback, `<job-tag>.log` for stdout, `<scheduler-job-id>.cobaltlog` for submission/allocation details, and `<job-tag>.sh` for the exact environment and interpreter command.
+- The final `torchrun` `ChildFailedError` is usually only a wrapper. Diagnose the earlier per-rank exception, such as an assertion or `torch.OutOfMemoryError`.
+- CLI options include `--input`, `--source`, and `--settings`, for example `.venv/bin/dawgz <workflow-index> <job-index> --settings`.
+- Cobalt removes completed jobs from `qstat`; afterward, the dawgz CLI may fail while querying state before it renders logs, input, or settings. Inspect the files in `.dawgz/<workflow-id>/` directly in that case.
+- Jobs capture most configuration inside a nested `functools.partial`, so `--input` may show only the lap. For trusted local pickle files, print the captured callable with `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c "import cloudpickle; from pathlib import Path; print(cloudpickle.loads(Path('<job.pkl>').read_bytes()))"`. Never unpickle untrusted files because loading a pickle can execute code.
+
 ## Paper reproduction quickstart (Wiki-aligned)
 - Canonical long-form guide is the Wiki: https://github.com/montefiore-sail/appa/wiki . Use it for parameter values; use this section for execution order and traps.
 - Before running pipelines, set `PROJECT` in `appa/config/__init__.py` so `PATH_ERA5`, `PATH_STAT`, `PATH_MASK`, and `PATH_AE` point to real locations.
