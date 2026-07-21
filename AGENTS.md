@@ -29,6 +29,7 @@
 
 ## Inspecting dawgz runs
 - Run dawgz commands from the repository root. Use `.venv/bin/dawgz` when `dawgz` is not on `PATH`; `.venv/bin/dawgz` lists workflows, and `.venv/bin/dawgz <workflow-index> <job-index>` shows a job.
+- Dawgz stores workflow metadata in `.dawgz/` relative to the working directory used for submission. A workflow submitted from `experiments/diffusion/`, for example, appears under `experiments/diffusion/.dawgz/` and is only listed when dawgz is run from that directory (for example, `../../.venv/bin/dawgz`). Prefer submitting from the repository root to keep all workflow records in the root `.dawgz/`.
 - `.dawgz/workflows.csv` maps workflow names to IDs. Each workflow's artifacts are under `.dawgz/<workflow-id>/`.
 - Read `<scheduler-job-id>.error` for stderr and the first actionable traceback, `<job-tag>.log` for stdout, `<scheduler-job-id>.cobaltlog` for submission/allocation details, and `<job-tag>.sh` for the exact environment and interpreter command.
 - The final `torchrun` `ChildFailedError` is usually only a wrapper. Diagnose the earlier per-rank exception, such as an assertion or `torch.OutOfMemoryError`.
