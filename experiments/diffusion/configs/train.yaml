@@ -2,12 +2,16 @@ defaults:
   - backbone: vit_large
   - optim: adamw
 
+data:
+  # Time in hours between consecutive rows in the latent H5 file.
+  time_interval: 6
+
 train:
   update_steps: 500_000
   # Number of elements that can fit at once on a gpu
-  batch_element_per_gpu: 1
+  batch_element_per_gpu: 128
   # Effective batch size for one optimizer step
-  batch_size_per_step: 256
+  batch_size_per_step: 2048
   precision: float16
   # Minimal number of samples seen to log statistics
   log_interval: 1024
@@ -15,9 +19,11 @@ train:
   save_interval: 8192
   shuffle_training: true
   standardize: true
-  # Time in hours between two adjacent samples of a blanket
+  # Row stride between two adjacent samples of a blanket in the latent H5 file.
+  # With data.time_interval=6, blanket_dt=1 means adjacent samples are 6h apart.
   blanket_dt: 1
-  blanket_size: 24
+  # Number of latent samples per blanket. With 6h data, 24 samples = 144h.
+  blanket_size: 4
   noise_schedule: rectified
   sigma_min: 1e-3
   sigma_max: 1e3

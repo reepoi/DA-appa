@@ -73,6 +73,13 @@ def train(
 
     assert cfg.ae_run is not None, "Autoencoder run id and lap must be specified."
     assert cfg.latent_dump is not None, "Latent dump id must be specified."
+    assert 24 % cfg.data.time_interval == 0, "Data time interval must divide 24 hours."
+
+    end_hour = 24 - cfg.data.time_interval
+    trajectory_dt_hours = cfg.data.time_interval * cfg.train.blanket_dt
+    with open_dict(cfg):
+        cfg.data["end_hour"] = end_hour
+        cfg.data["trajectory_dt_hours"] = trajectory_dt_hours
 
     ae_cfg = compose(
         config_file=PATH_AE / cfg.ae_run / "config.yaml",
@@ -98,6 +105,7 @@ def train(
             standardize=cfg.train.standardize,
             stride=cfg.train.blanket_dt,
             noise_level=noise_level,
+            end_hour=end_hour,
         )
         for start_date, end_date in (DATASET_DATES_TRAINING, DATASET_DATES_VALIDATION)
     )
@@ -134,7 +142,11 @@ def train(
         grid = None
         x, y, z = None, None, None
 
-    schedule = create_schedule(cfg.train, device)
+    schedule = create_schedule(
+        cfg.train,
+        bfloat16=cfg.train.precision == "bfloat16",
+        device=device,
+    )
 
     with open_dict(cfg):
         cfg.backbone["blanket_size"] = cfg.train.blanket_size
@@ -364,10 +376,11 @@ def train(
 
                     for _ in range(cfg.valid.n_valid_samples_per_date):
                         sampled_state = sampler(
-                            sampler.schedule(torch.ones(1).cuda())
+                            sampler.schedule.sigma_tmax().to(device)
                             * torch.randn(
-                                1, cfg.train.blanket_size * torch.tensor(gt.shape[-2:]).prod()
-                            ).cuda()
+                                1, cfg.train.blanket_size * torch.tensor(gt.shape[-2:]).prod(),
+                                device=device,
+                            )
                         ).reshape((-1, cfg.train.blanket_size, *gt.shape[-2:]))
 
                         generated_samples.append(sampled_state)
@@ -543,7 +556,7 @@ if __name__ == "__main__":
     #     help="Slurm partition.",
     # )
     parser.add_argument("--lap-start", type=int, default=0, help="Lap number to start from.")
-    parser.add_argument("--laps", type=int, default=2, help="Maximum number of laps to perform.")
+    parser.add_argument("--laps", type=int, default=1, help="Maximum number of laps to perform.")
     parser.add_argument(
         "--fork", type=str, default=None, help="Restart the a given runid/lap with a new id."
     )
