@@ -7,6 +7,7 @@ diffusion:
     type: lms
     config: {}
 
+# Trajectory durations in hours. These must be divisible by the model's data interval.
 trajectory_sizes: "72"
 
 # Samples for a given window size
@@ -17,23 +18,18 @@ start_dates:
   - "2021-09-21 0h"
   - "2021-12-21 0h"
 
-blanket_overlap: 12  # Overlap between blankets
+# Number of overlapping latent states. Two states correspond to 12h for this model.
+blanket_overlap: 2
 
 precision: float16  # Options: float32, float16, bfloat16, null = model training precision
 
 hardware:
-  backend: slurm
-  account: users
+  backend: cobalt
+  account: taost
   gpus_per_node: 4
   gen:
-    cpus: 8
-    ram: 60GB
-    time: "6:00"
-    partition: gpu
-    gpus: 2  # TODO: Support for "auto" mode that computes GPUs based on a number of blankets per GPU for scalable experiments.
+    time: "0"
+    queue: gpu_v100_smx2
   aggregate:
-    cpus: 8
-    gpus: 0
-    ram: 500GB
-    time: "4:00"
-    partition: cpu
+    time: "0"
+    queue: gpu_v100_smx2

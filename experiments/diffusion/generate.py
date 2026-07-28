@@ -11,7 +11,7 @@ import torch.distributed as dist
 import wandb
 import warnings
 
-from dawgz import after, job, schedule
+from dawgz import array, job, schedule
 from einops import rearrange
 from functools import partial
 from math import ceil, floor
@@ -37,25 +37,43 @@ def schedule_jobs(config, unique_id):
 
     # Launch job array of n samples for each window, according to a list of n timestamps
     trajectory_sizes = str(config.pop("trajectory_sizes"))
-    blanket_size = compose(f"{config.model_path}/config.yaml").train.blanket_size
+    denoiser_cfg = compose(f"{config.model_path}/config.yaml")
+    blanket_size = denoiser_cfg.train.blanket_size
+    trajectory_dt_hours = denoiser_cfg.data.trajectory_dt_hours
     overlap = config.blanket_overlap
+    if not 0 <= overlap < blanket_size:
+        raise ValueError(f"blanket_overlap must be between 0 and {blanket_size - 1}.")
     blanket_stride = blanket_size - overlap
 
     hardware_cfg = config.pop("hardware")
-    gen_cfg = hardware_cfg.gen
+    gen_cfg = OmegaConf.to_container(hardware_cfg.gen, resolve=True)
     gen_gpus = gen_cfg.pop("gpus")
+    aggregate_cfg = OmegaConf.to_container(hardware_cfg.aggregate, resolve=True)
+    for settings in (gen_cfg, aggregate_cfg):
+        settings.setdefault("account", hardware_cfg.account)
 
     num_samples_per_date = config.pop("num_samples_per_date")
     start_dates = config.pop("start_dates")
-    start_dates = [start_date for start_date in start_dates for _ in range(num_samples_per_date)]
     start_dates = [
-        (day, int(hour.split("h")[0])) for date in start_dates for day, hour in [date.split(" ")]
+        start_date for start_date in start_dates for _ in range(num_samples_per_date)
+    ]
+    start_dates = [
+        (day, int(hour.split("h")[0]))
+        for date in start_dates
+        for day, hour in [date.split(" ")]
     ]
     start_dates, start_hours = zip(*start_dates)
     num_samples_per_traj_size = len(start_dates)
 
     jobs = []
-    for unpadded_traj_size in str_to_ids(ids_str=trajectory_sizes):
+    for trajectory_hours in str_to_ids(ids_str=trajectory_sizes):
+        if trajectory_hours % trajectory_dt_hours != 0:
+            raise ValueError(
+                f"Trajectory duration {trajectory_hours}h must be divisible by the model's "
+                f"{trajectory_dt_hours}h interval."
+            )
+        unpadded_traj_size = trajectory_hours // trajectory_dt_hours
+
         # TODO: External function to compute padded traj size
         #       given desired (ie unpadded) traj size, blanket size, num of gpus or "auto", etc.
         #       - auto mode when given maxblankets_per_gpu: compute gpus needed.
@@ -88,24 +106,32 @@ def schedule_jobs(config, unique_id):
             num_nodes = 1
 
         if num_nodes > 1:
-            interpreter = f"torchrun --nnodes {num_nodes} --nproc-per-node {num_gpus} --rdzv_backend=c10d --rdzv_endpoint=$SLURMD_NODENAME:12345 --rdzv_id=$SLURM_JOB_ID"
+            interpreter = f"uv run torchrun --nnodes {num_nodes} --nproc-per-node {num_gpus} --rdzv_backend=c10d --rdzv_endpoint=${{SLURMD_NODENAME:-$(head -n 1 $COBALT_NODEFILE)}}:12345 --rdzv_id=${{SLURM_JOB_ID:-$COBALT_JOBID}}"
         else:
-            interpreter = f"torchrun --nnodes 1 --nproc-per-node {num_gpus} --standalone"
+            interpreter = (
+                f"uv run torchrun --nnodes 1 --nproc-per-node {num_gpus} --standalone"
+            )
 
-        window_target_dir = target_dir / f"{unpadded_traj_size}h"
+        window_target_dir = target_dir / f"{trajectory_hours}h"
 
         @job(
-            name=f"appa prior (gen {unpadded_traj_size}h)",
+            name=f"appa_prior_gen_{trajectory_hours}h",
             nodes=num_nodes,
             gpus=num_gpus,
-            array=num_samples_per_traj_size,
             interpreter=interpreter,
+            env=[
+                f"export OMP_NUM_THREADS={gen_cfg['cpus']}",
+                "export WANDB_SILENT=true",
+                "export XDG_CACHE_HOME=$HOME/.cache",
+                "export TORCHINDUCTOR_CACHE_DIR=$HOME/.cache/torchinductor",
+            ],
             **gen_cfg,
         )
         def gen_trajectory(
             i: int,
             padded_traj_size: int = trajectory_size,
             unpadded_traj_size: int = unpadded_traj_size,
+            trajectory_hours: int = trajectory_hours,
             window_target_dir: Path = window_target_dir,
         ):
             target_dir_traj = window_target_dir / f"tmp_{i}"
@@ -114,16 +140,17 @@ def schedule_jobs(config, unique_id):
             generate_prior_trajectory(
                 unpadded_trajectory_size=unpadded_traj_size,
                 padded_trajectory_size=padded_traj_size,
+                trajectory_hours=trajectory_hours,
                 start_date=start_dates[i],
                 start_hour=start_hours[i],
                 target_dir=target_dir_traj,
                 **config,
             )
 
-        @after(gen_trajectory)
         @job(
-            name=f"appa prior (agg {unpadded_traj_size}h)",
-            **hardware_cfg.aggregate,
+            name=f"appa_prior_aggregate_{trajectory_hours}h",
+            interpreter="uv run python",
+            **aggregate_cfg,
         )
         def aggregate(window_target_dir=window_target_dir):
             trajectories = []
@@ -143,27 +170,28 @@ def schedule_jobs(config, unique_id):
             trajectories = torch.cat(trajectories)
             timestamps = torch.cat(timestamps)
 
-            trajectories = rearrange(trajectories, "(d s) ... -> d s ...", s=num_samples_per_date)
-            timestamps = rearrange(timestamps, "(d s) ... -> d s ...", s=num_samples_per_date)
+            trajectories = rearrange(
+                trajectories, "(d s) ... -> d s ...", s=num_samples_per_date
+            )
+            timestamps = rearrange(
+                timestamps, "(d s) ... -> d s ...", s=num_samples_per_date
+            )
 
             safe_save(trajectories, window_target_dir / "trajectories.pt")
             safe_save(timestamps, window_target_dir / "timestamps.pt")
 
             print("Saved to", window_target_dir)
 
-        jobs.append(aggregate)
+        generation = array(
+            *(gen_trajectory(i) for i in range(num_samples_per_traj_size)),
+            name=f"appa_prior_gen_{trajectory_hours}h",
+        )
+        jobs.append(aggregate().after(generation))
 
     schedule(
         *jobs,
         name="appa prior",
-        account=hardware_cfg.account,
         backend=hardware_cfg.backend,
-        env=[
-            f"export OMP_NUM_THREADS={gen_cfg.cpus}",
-            "export WANDB_SILENT=true",
-            "export XDG_CACHE_HOME=$HOME/.cache",
-            "export TORCHINDUCTOR_CACHE_DIR=$HOME/.cache/torchinductor",
-        ],
     )
 
 
@@ -173,6 +201,7 @@ def generate_prior_trajectory(
     diffusion,
     unpadded_trajectory_size,
     padded_trajectory_size,
+    trajectory_hours,
     blanket_overlap,
     start_date,
     start_hour,
@@ -185,8 +214,9 @@ def generate_prior_trajectory(
         model_path (str): Path to the trained model (lap folder).
         model_target (str): Target of the model (best or last).
         diffusion (dict): Diffusion parameters (num_steps and sampler).
-        unpadded_trajectory_size (int): Size of the trajectory to generate and save.
-        padded_trajectory_size (int): Size of the padded trajectory to fit blankets.
+        unpadded_trajectory_size (int): Number of trajectory states to generate and save.
+        padded_trajectory_size (int): Number of padded trajectory states used to fit blankets.
+        trajectory_hours (int): Duration represented by the generated trajectory.
         blanket_overlap (int): Number of states overlapping between blankets.
         start_date (str): Start date for the trajectory generation ("yyyy-mm-dd" format).
         start_hour (int): Start hour for the trajectory generation (0-23).
@@ -206,7 +236,7 @@ def generate_prior_trajectory(
     denoiser_cfg = compose(model_path / "config.yaml")
     precision = getattr(torch, precision)
     use_bfloat16 = precision == torch.bfloat16
-    trajectory_dt = denoiser_cfg.train.blanket_dt
+    trajectory_dt = denoiser_cfg.data.trajectory_dt_hours
     blanket_size = denoiser_cfg.train.blanket_size
     blanket_stride = blanket_size - blanket_overlap
     if diffusion.num_steps is None:
@@ -278,10 +308,14 @@ def generate_prior_trajectory(
         # arXiv:2306.10574 (SDA): non-autoregressive trajectory generation starts from
         # high noise and integrates reverse diffusion to sample the prior jointly.
         samp_start = (x1 * schedule.sigma_tmax().cuda()).flatten(1).cuda()
-        return sampler(samp_start).reshape((-1, padded_trajectory_size, *latent_shape)).cpu()
+        return (
+            sampler(samp_start)
+            .reshape((-1, padded_trajectory_size, *latent_shape))
+            .cpu()
+        )
 
     if rank == 0:
-        print("Starting generation for", unpadded_trajectory_size, "hours")
+        print("Starting generation for", trajectory_hours, "hours")
 
     if precision != torch.float16:
         sampled_traj = sample()
@@ -298,7 +332,7 @@ def generate_prior_trajectory(
 
 
 def main():
-    if sys.argv[1] in ("--help", "-h"):
+    if len(sys.argv) > 1 and sys.argv[1] in ("--help", "-h"):
         print("python generate.py [+id=<id>] model_path=... param1=A param2=B ...")
         return
 
@@ -308,10 +342,8 @@ def main():
 
     if "id" in config:
         unique_id = config.pop("id")
-    elif config.hardware.backend == "slurm":
-        unique_id = wandb.util.generate_id()
     else:
-        unique_id = os.environ["SLURM_JOB_ID"]  # even in async, should be in slurm job
+        unique_id = wandb.util.generate_id()
 
     schedule_jobs(config, unique_id)
 
