@@ -18,6 +18,7 @@ from math import ceil, floor
 from omegaconf import OmegaConf
 from pathlib import Path
 
+from appa.config import PROJECT, PATH_AE
 from appa.config.hydra import compose
 from appa.date import create_trajectory_timestamps
 from appa.diffusion import Denoiser, TrajectoryDenoiser, create_schedule
@@ -47,7 +48,7 @@ def schedule_jobs(config, unique_id):
 
     hardware_cfg = config.pop("hardware")
     gen_cfg = OmegaConf.to_container(hardware_cfg.gen, resolve=True)
-    gen_gpus = gen_cfg.pop("gpus")
+    gen_gpus = gen_cfg.pop("gpus_per_node")
     aggregate_cfg = OmegaConf.to_container(hardware_cfg.aggregate, resolve=True)
     for settings in (gen_cfg, aggregate_cfg):
         settings.setdefault("account", hardware_cfg.account)
@@ -86,7 +87,7 @@ def schedule_jobs(config, unique_id):
             trajectory_size += 1
 
         num_gpus = gen_gpus
-        gpus_per_node = hardware_cfg.gpus_per_node
+        gpus_per_node = num_gpus
 
         num_blankets = (trajectory_size - blanket_size) // blanket_stride + 1
         if num_gpus > num_blankets:
@@ -120,7 +121,7 @@ def schedule_jobs(config, unique_id):
             gpus=num_gpus,
             interpreter=interpreter,
             env=[
-                f"export OMP_NUM_THREADS={gen_cfg['cpus']}",
+                f"export OMP_NUM_THREADS={8}",
                 "export WANDB_SILENT=true",
                 "export XDG_CACHE_HOME=$HOME/.cache",
                 "export TORCHINDUCTOR_CACHE_DIR=$HOME/.cache/torchinductor",
@@ -336,7 +337,7 @@ def main():
         print("python generate.py [+id=<id>] model_path=... param1=A param2=B ...")
         return
 
-    config = compose("configs/generate.yaml", overrides=sys.argv[1:])
+    config = compose(PROJECT/"experiments/diffusion/configs/generate.yaml", overrides=sys.argv[1:])
     OmegaConf.set_readonly(config, False)
     OmegaConf.set_struct(config, False)
 

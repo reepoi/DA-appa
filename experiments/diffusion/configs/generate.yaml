@@ -1,5 +1,5 @@
 model_path: ???
-model_target: best  # Options: best, last
+model_target: last  # Options: best, last
 
 diffusion:
   num_steps: 64  # Defaults to model's validation denoising steps
@@ -11,12 +11,13 @@ diffusion:
 trajectory_sizes: "72"
 
 # Samples for a given window size
-num_samples_per_date: 10
+num_samples_per_date: 2
 start_dates:
-  - "2021-03-21 0h"
-  - "2021-06-21 0h"
-  - "2021-09-21 0h"
-  - "2021-12-21 0h"
+  - "2020-06-21 0h"
+  # - "2021-03-21 0h"
+  # - "2021-06-21 0h"
+  # - "2021-09-21 0h"
+  # - "2021-12-21 0h"
 
 # Number of overlapping latent states. Two states correspond to 12h for this model.
 blanket_overlap: 2
@@ -26,8 +27,8 @@ precision: float16  # Options: float32, float16, bfloat16, null = model training
 hardware:
   backend: cobalt
   account: taost
-  gpus_per_node: 4
   gen:
+    gpus_per_node: 4
     time: "0"
     queue: gpu_v100_smx2
   aggregate:
