@@ -57,6 +57,8 @@ def process_weather_5k_metadata(data_path: Path, save_path: Path) -> None:
 def process_raw_noaa_csv(data_path: Path, save_path: Path) -> None:
     r"""Processes the data from raw NOAA csv files.
 
+    Link to the csv files: https://www.ncei.noaa.gov/data/global-summary-of-the-day/access/2025/
+
     Arguments:
         data_path: Path to dir with csv files.
         save_path: Path to the save location.
